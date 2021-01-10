@@ -13,73 +13,73 @@ from toolbox.utils.SliceHolder import SliceHolder
 
 class ModelWrapper(ABC):
     @abstractmethod
-    def fitModel(self, trainFeatures: pd.DataFrame, trainTarget: pd.Series) -> any:
+    def fitModel(self, train_features: pd.DataFrame, train_target: pd.Series) -> any:
         """
         Wraps a model for use by the calcMlFactor function.
         Fits a model to the given features. then returns the fit model.
         If the fit model does not contain a "predict" method then predict mut be overwritten.
 
-        :param trainFeatures: the features to train the model on
-            Must have the same index as trainTarget
-        :param trainTarget: the target for the trainFeatures.
-            Must have the same index as trainFeatures
+        :param train_features: the features to train the model on
+            Must have the same index as train_target
+        :param train_target: the target for the train_features.
+            Must have the same index as train_features
         :return: a model fit to the given features and targets
         """
         pass
 
     @staticmethod
-    def transformData(trainFeatures: pd.DataFrame, trainTarget: pd.Series, predict: pd.DataFrame) -> Tuple[
+    def transform_data(train_features: pd.DataFrame, train_target: pd.Series, predict: pd.DataFrame) -> Tuple[
         pd.DataFrame, pd.DataFrame]:
         """
         *** Do not fit any transformations on the predict data. That WILL result in lookahead Bias.***
-        Only manipulate the predict data with transformations fit with the trainFeatures
+        Only manipulate the predict data with transformations fit with the train_features
 
         This method is used to preprocess the data before the training, and predicting data is passed to the model
 
         The indexes must not be changed. However columns can be dropped and altered.
-        Any change to the trainTarget must also be done to the predict data.
+        Any change to the train_target must also be done to the predict data.
 
-        Example use: fit a PCA to the trainFeatures then transform the trainFeatures and predict data using said PCA.
+        Example use: fit a PCA to the train_features then transform the train_features and predict data using said PCA.
                 or use RFE to reduce dimensionality
 
-        :param trainFeatures: the features to train the model on
-        :param trainTarget: the target for the trainFeatures
+        :param train_features: the features to train the model on
+        :param train_target: the target for the train_features
         :param predict: The data to make predictions on
-        :return: the transformed (trainFeatures, predict) with no index changes.
+        :return: the transformed (train_features, predict) with no index changes.
         """
-        return trainFeatures, predict
+        return train_features, predict
 
-    def predict(self, trainFeatures: pd.DataFrame, trainTarget: pd.Series, predict: pd.DataFrame) -> pd.Series:
+    def predict(self, train_features: pd.DataFrame, train_target: pd.Series, predict: pd.DataFrame) -> pd.Series:
         """
         fits a model to the given training data and then makes predictions with the fitted model
         fits a model by calling "fitModel".
         assumes the "fitModel" returns a model with a "predict" method.
 
-        :param trainFeatures: the features to train the model on
-            Must have the same index as trainTarget
-        :param trainTarget: the target for the trainFeatures.
-            Must have the same index as trainFeatures
+        :param train_features: the features to train the model on
+            Must have the same index as train_target
+        :param train_target: the target for the train_features.
+            Must have the same index as train_features
         :param predict: The data to make predictions on
         :return: a Tuple of pandas Series with the predictions and a float what s the
         """
-        if not trainFeatures.index.equals(trainTarget.index):
+        if not train_features.index.equals(train_target.index):
             raise ValueError('The index for the features and target is different')
 
         # allowing the user to adjust the data before fitting, assuming that the user does not mess up the indexes
-        transformedFeatures, transformedPredict = self.transformData(trainFeatures, trainTarget, predict)
+        transformed_features, transformedPredict = self.transform_data(train_features, train_target, predict)
 
         # fitting and making predictions with user defined model
-        model: any = self.fitModel(transformedFeatures, trainTarget)
+        model: any = self.fitModel(transformed_features, train_target)
         predicted: pd.Series = pd.Series(data=model.predict(transformedPredict), index=predict.index)
 
         # freeing up memory
-        del model, trainFeatures, trainTarget, predict, transformedFeatures, transformedPredict
+        del model, train_features, train_target, predict, transformed_features, transformedPredict
         gc.collect()
 
         return predicted
 
 
-def calcMlFactor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, evalDays: int, refitEvery: int,
+def calcMlFactor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, eval_days: int, refit_every: int,
                  expanding: int = None, rolling: int = None) -> pd.Series:
     """
     Calculates an alpha factor using a ML factor combination method.
@@ -97,10 +97,10 @@ def calcMlFactor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series,
     :param target: the target we are going to fit the model to
         there cannot be null values
         must have a multi index of (pd.Timestamp, symbol)
-    :param evalDays: IF INCORRECT THERE WILL BE LOOK AHEAD BIAS
+    :param eval_days: IF INCORRECT THERE WILL BE LOOK AHEAD BIAS
         the amount of days it takes to know the predictions outcome
         this number should simply be the length of return we are trying to predict
-    :param refitEvery: the amount of consecutive days to predict using a single model
+    :param refit_every: the amount of consecutive days to predict using a single model
         this is essentially saying refit the model every x days
     :param expanding: the minimum amount of days of data to train on
         if rollingDays is passed then this should not be passed
@@ -110,47 +110,47 @@ def calcMlFactor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series,
     :return: pandas series of predictions. The index will be the same as "features"
     """
 
-    featuresCopy: pd.DataFrame = features.copy().sort_index()
-    targetCopy: pd.Series = target.copy().sort_index()
+    features_copy: pd.DataFrame = features.copy().sort_index()
+    target_copy: pd.Series = target.copy().sort_index()
 
-    if (np.isnan(featuresCopy.values).any()) or (not np.isfinite(featuresCopy.values).all()):
+    if (np.isnan(features_copy.values).any()) or (not np.isfinite(features_copy.values).all()):
         raise ValueError('There are nan or inf values in the features')
-    if (np.isnan(targetCopy.values).any()) or (not np.isfinite(targetCopy.values).all()):
+    if (np.isnan(target_copy.values).any()) or (not np.isfinite(target_copy.values).all()):
         raise ValueError('There are nan or inf values in the target')
-    if not isinstance(featuresCopy.index, pd.MultiIndex):
+    if not isinstance(features_copy.index, pd.MultiIndex):
         raise ValueError('Features and target must have a pd.MultiIndex of (pd.Timestamp, str)')
-    if not isinstance(featuresCopy.index.get_level_values(0), pd.DatetimeIndex):
+    if not isinstance(features_copy.index.get_level_values(0), pd.DatetimeIndex):
         raise ValueError('Features and target must have index level 0 of pd.DatetimeIndex')
-    if not featuresCopy.index.equals(targetCopy.index):
+    if not features_copy.index.equals(target_copy.index):
         raise ValueError('The index for the features and target is different')
 
-    trainPredictSlices: Generator[Tuple[SliceHolder, SliceHolder], None, None] = \
-        generateIndexes(featuresCopy.index, evalDays, refitEvery, expanding, rolling)
+    train_predict_slices: Generator[Tuple[SliceHolder, SliceHolder], None, None] = \
+        generate_indexes(features_copy.index, eval_days, refit_every, expanding, rolling)
 
-    mlAlpha: List[pd.Series] = []
-    for trainSlice, predictSlice in tqdm(trainPredictSlices):
-        featuresTrain = featuresCopy.loc[trainSlice.getStart():trainSlice.getEnd()]
-        targetTrain = targetCopy.loc[trainSlice.getStart():trainSlice.getEnd()]
-        predict = featuresCopy.loc[predictSlice.getStart():predictSlice.getEnd()]
-        mlAlpha.append(model.predict(featuresTrain, targetTrain, predict))
+    ml_alpha: List[pd.Series] = []
+    for train_slice, predict_slice in tqdm(train_predict_slices):
+        features_train = features_copy.loc[train_slice.start:train_slice.end]
+        target_train = target_copy.loc[train_slice.start:train_slice.end]
+        predict = features_copy.loc[predict_slice.start:predict_slice.end]
+        ml_alpha.append(model.predict(features_train, target_train, predict))
 
-    del featuresCopy, targetCopy
+    del features_copy, target_copy
     gc.collect()
 
-    return pd.concat(mlAlpha)
+    return pd.concat(ml_alpha)
 
 
-def generateIndexes(dataIndex: pd.MultiIndex, evalDays: int, refitEvery: int, expanding: int = None,
-                    rolling: int = None) -> Generator[Tuple[SliceHolder, SliceHolder], None, None]:
+def generate_indexes(data_index: pd.MultiIndex, eval_days: int, refit_every: int, expanding: int = None,
+                     rolling: int = None) -> Generator[Tuple[SliceHolder, SliceHolder], None, None]:
     """
     generates the slice index's for the training and predicting periods.
     function is designed to work with dates in level 0 however this is not enforced anywhere
 
-    :param dataIndex: MultiIndex of the data we are generating int index's for
-    :param evalDays: IF INCORRECT THERE WILL BE LOOK AHEAD BIAS
+    :param data_index: MultiIndex of the data we are generating int index's for
+    :param eval_days: IF INCORRECT THERE WILL BE LOOK AHEAD BIAS
         the amount of days it takes to know the predictions outcome
         this number should simply be the length of return we are trying to predict
-    :param refitEvery: the amount of consecutive days to predict using a single model
+    :param refit_every: the amount of consecutive days to predict using a single model
         this is essentially saying refit the model every x days
     :param expanding: the minimum amount of days of data to train on
         if rollingDays is passed then this should not be passed
@@ -162,8 +162,8 @@ def generateIndexes(dataIndex: pd.MultiIndex, evalDays: int, refitEvery: int, ex
             Slice Two: predicting indexes
     """
 
-    if (evalDays < 1) or (refitEvery < 1):
-        raise ValueError('evalDays and/or refitEvery must be greater than zero')
+    if (eval_days < 1) or (refit_every < 1):
+        raise ValueError('eval_days and/or refit_every must be greater than zero')
     if rolling is not None and (rolling < 1):
         raise ValueError('rolling must be greater than zero')
     if expanding is not None and (expanding < 1):
@@ -173,27 +173,27 @@ def generateIndexes(dataIndex: pd.MultiIndex, evalDays: int, refitEvery: int, ex
     if bool(expanding) & bool(rolling):
         raise ValueError('minTrainDays and rollingDays can not both be defined')
 
-    dates: np.array = dataIndex.get_level_values(0).drop_duplicates().to_numpy()
+    dates: np.array = data_index.get_level_values(0).drop_duplicates().to_numpy()
 
-    startPlace = expanding if expanding else rolling
+    start_place = expanding if expanding else rolling
     # dont have to ceil this bc it wont matter with a < operator
-    amountOfLoops: float = (len(dates) - startPlace - evalDays) / refitEvery
+    amount_of_loops: float = (len(dates) - start_place - eval_days) / refit_every
 
     i: int = 0
-    while i < amountOfLoops:
+    while i < amount_of_loops:
         # .loc[] is inclusive in a slice, so everything here is inclusive
-        trainEndIndex: int = (i * refitEvery) + (startPlace - 1)
-        trainStartIndex: int = trainEndIndex - rolling + 1 if rolling else 0
-        trainSlice: SliceHolder = SliceHolder(dates[trainStartIndex], dates[trainEndIndex])
+        train_end_index: int = (i * refit_every) + (start_place - 1)
+        train_start_index: int = train_end_index - rolling + 1 if rolling else 0
+        train_slice: SliceHolder = SliceHolder(dates[train_start_index], dates[train_end_index])
 
-        predictStartIndex: int = trainEndIndex + evalDays + 1
-        predictEndIndex: int = predictStartIndex + refitEvery - 1
+        predict_start_index: int = train_end_index + eval_days + 1
+        predict_end_index: int = predict_start_index + refit_every - 1
         # accounting for when the ending predicted index is out of bounds on the last loop
-        if predictEndIndex >= len(dates) - 1:
-            predictEndIndex: int = len(dates) - 1
+        if predict_end_index >= len(dates) - 1:
+            predict_end_index: int = len(dates) - 1
 
-        predictSlice: SliceHolder = SliceHolder(dates[predictStartIndex], dates[predictEndIndex])
+        predict_slice: SliceHolder = SliceHolder(dates[predict_start_index], dates[predict_end_index])
 
         i += 1
-        yield trainSlice, predictSlice
+        yield train_slice, predict_slice
 

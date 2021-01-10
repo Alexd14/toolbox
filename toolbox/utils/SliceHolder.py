@@ -8,10 +8,12 @@ class SliceHolder:
         self.__start = start
         self.__end = end
 
-    def getStart(self):
+    @property
+    def start(self):
         return self.__start
 
-    def getEnd(self):
+    @property
+    def end(self):
         return self.__end
 
     def __str__(self):

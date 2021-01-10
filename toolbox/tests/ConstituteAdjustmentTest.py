@@ -1,6 +1,6 @@
 import unittest
 
-from pandas import Timestamp, DataFrame
+from pandas import Timestamp, DataFrame, concat
 
 from toolbox.constitutes.ConstituteAdjustment import ConstituteAdjustment
 
@@ -8,7 +8,7 @@ from toolbox.constitutes.ConstituteAdjustment import ConstituteAdjustment
 class ConstituteAdjustmentTest(unittest.TestCase):
 
     def examples(self):
-        self.fooConstitutes = DataFrame(data=[
+        self.foo_constitutes = DataFrame(data=[
             # symbol    entered     exited
             ['BOB', '20090101', '20120101'],  # whole thing
             ['LARY', '20100105', '20100107'],  # added and then exited
@@ -17,12 +17,12 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         )
 
         self.ca = ConstituteAdjustment()
-        self.ca.addIndexInfo(startingDate=Timestamp(year=2010, month=1, day=4),
-                             endingDate=Timestamp(year=2010, month=1, day=12),
-                             indexConstitutes=self.fooConstitutes, dateFormat='%Y%m%d',
-                             pad=10)
+        self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
+                               ending_date=Timestamp(year=2010, month=1, day=12),
+                               index_constitutes=self.foo_constitutes, date_format='%Y%m%d',
+                               pad=2)
 
-        self.fooData = DataFrame(
+        self.foo_data = DataFrame(
             data=[['BOB', '2010-01-04', 50],
                   ['BOB', '2010-01-05', 51],
                   ['BOB', '2010-01-06', 52],
@@ -39,7 +39,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                   ['FOO', '2010-01-08', 0]],  # should be ignored
             columns=['symbol', 'date', 'factor'])
 
-        self.adjustedFoo = DataFrame(
+        self.adjusted_foo = DataFrame(
             data=[['BOB', Timestamp('2010-01-04', tz='UTC'), 50],
                   ['BOB', Timestamp('2010-01-05', tz='UTC'), 51],
                   ['BOB', Timestamp('2010-01-06', tz='UTC'), 52],
@@ -52,94 +52,121 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                   ['LARY', Timestamp('2010-01-07', tz='UTC'), 23]],
             columns=['symbol', 'date', 'factor']).set_index(['date', 'symbol'])
 
+        pricing_data = DataFrame(
+            data=[['BOB', '2010-01-13', 50],
+                  ['BOB', '2010-01-14', 50],
+                  ['LARY', '2010-01-08', 24],
+                  ['LARY', '2011-01-11', 24]],
+            columns=['symbol', 'date', 'factor']).set_index(['date', 'symbol'])
+
+        self.adjusted_pricing = concat([pricing_data, self.adjusted_foo]).sort_index()
+
     #
-    #  ************************************  addIndexInfo  ************************************
+    #  ************************************  add_index_info  ************************************
     #
 
-    def test_addIndexInfo(self):
+    def test_factor_add_index_info(self):
         """
-        testing the index generation in addIndexInfo
+        testing the index generation in add_index_info
         has missing data (None), data that should not be included (yet to be added, has been removed) and
         irrelevant symbols
         """
         self.examples()
+        # for factors
+        factor_components = [(Timestamp('2010-01-04', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-05', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-06', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-07', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-08', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-11', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-12', tz='UTC'), 'BOB'),
+                             (Timestamp('2010-01-05', tz='UTC'), 'LARY'),
+                             (Timestamp('2010-01-06', tz='UTC'), 'LARY'),
+                             (Timestamp('2010-01-07', tz='UTC'), 'LARY')]
+        self.assertEqual(factor_components, self.ca.factor_components)
 
-        components = [(Timestamp('2010-01-04', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-05', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-06', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-07', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-08', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-11', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-12', tz='UTC'), 'BOB'),
-                      (Timestamp('2010-01-05', tz='UTC'), 'LARY'),
-                      (Timestamp('2010-01-06', tz='UTC'), 'LARY'),
-                      (Timestamp('2010-01-07', tz='UTC'), 'LARY')]
-        self.assertEqual(components, self.ca.components)
+        # for pricing
+        pricing_components = factor_components + [(Timestamp('2010-01-13', tz='UTC'), 'BOB'),
+                                                  (Timestamp('2010-01-14', tz='UTC'), 'BOB'),
+                                                  (Timestamp('2010-01-08', tz='UTC'), 'LARY'),
+                                                  (Timestamp('2010-01-11', tz='UTC'), 'LARY')]
+        self.assertEqual(pricing_components, self.ca.pricing_components)
 
-    def test_throwColumnError(self):
+    def test_throw_column_error(self):
         """
         ensuring a error will be thrown when the correct columns are not supplied
         """
         self.examples()
 
         with self.assertRaises(ValueError) as em:
-            self.ca.addIndexInfo(startingDate=Timestamp(year=2010, month=1, day=4),
-                                 endingDate=Timestamp(year=2010, month=1, day=12),
-                                 dateFormat='%Y%m%d',
-                                 indexConstitutes=DataFrame(columns=['foo', 'foo1', 'foo2']),
-                                 pad=10)
+            self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
+                                   ending_date=Timestamp(year=2010, month=1, day=12),
+                                   date_format='%Y%m%d',
+                                   index_constitutes=DataFrame(columns=['foo', 'foo1', 'foo2']),
+                                   pad=10)
         self.assertEqual('Required column "symbol" is not present', str(em.exception))
 
-    def test_duplicateSymbols(self):
+    def test_duplicate_symbols(self):
         """
         Ensuring that passing a df with duplicate symbols will raise a ValueError
         """
         self.examples()
 
-        self.fooConstitutes.iat[1, 0] = 'BOB'
+        self.foo_constitutes.iat[1, 0] = 'BOB'
 
         with self.assertRaises(ValueError) as em:
-            self.ca.addIndexInfo(startingDate=Timestamp(year=2010, month=1, day=4),
-                                 endingDate=Timestamp(year=2010, month=1, day=12),
-                                 dateFormat='%Y%m%d',
-                                 indexConstitutes=self.fooConstitutes,
-                                 pad=10)
+            self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
+                                   ending_date=Timestamp(year=2010, month=1, day=12),
+                                   date_format='%Y%m%d',
+                                   index_constitutes=self.foo_constitutes,
+                                   pad=10)
         self.assertEqual('The column symbols is 0.333 duplicates, 1 rows\n', str(em.exception))
 
     #
-    #  ************************************  adjustDataForMembership  ************************************
+    #  ************************************  adjust_data_for_membership  ************************************
     #
 
-    def test_adjustDataForMembership(self):
+    def test_adjust_data_for_membership(self):
         """
-        ensuring adjustDataForMembership return the correct data frame
-        data given has good data to index, not seen bad tickers, and tickers with dates out of bouns
+        ensuring adjust_data_for_membership return the correct data frame
+        data given has good data to index, not seen bad tickers, and tickers with dates out of bounds
         """
         self.examples()
-        filtered = self.ca.adjustDataForMembership(data=self.fooData, dateFormat='%Y-%m-%d', representation='factor')
-        self.assertTrue(self.adjustedFoo.equals(filtered))
+        filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
+                                                      representation='factor')
+        self.assertTrue(self.adjusted_foo.equals(filtered))
 
-    def test_throwError_adjustDataForMembership(self):
+    def test_pad_adjust_data_for_membership(self):
         """
-        ensuring adjustDataForMembership throws error when not given symbols or date
+        ensuring that pad works correctly for adjust_data_for_membership
+        """
+        self.examples()
+        filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
+                                                      representation='pricing')
+
+        self.assertTrue(self.adjusted_pricing.equals(filtered))
+
+    def test_throw_error_adjust_data_for_membership(self):
+        """
+        ensuring adjust_data_for_membership throws error when not given symbols or date
         """
         self.examples()
 
         with self.assertRaises(ValueError) as em:
-            self.ca.adjustDataForMembership(data=DataFrame(columns=['foo', 'notSymbol', 'factor']),
-                                            representation='factor')
+            self.ca.adjust_data_for_membership(data=DataFrame(columns=['foo', 'notSymbol', 'factor']),
+                                               representation='factor')
         self.assertEqual('Required column "date" is not present', str(em.exception))
 
-    def test_noIndexSet_adjustDataForMembership(self):
+    def test_no_index_set_adjust_data_for_membership(self):
         """
-        ensuring adjustDataForMembership throws error when there is no index set
-        AKA addIndexInfo was never called
+        ensuring adjust_data_for_membership throws error when there is no index set
+        AKA add_index_info was never called
         """
         self.examples()
 
         with self.assertRaises(ValueError) as em:
-            ConstituteAdjustment().adjustDataForMembership(data=self.fooData, dateFormat='%Y-%m-%d',
-                                                           representation='factor')
+            ConstituteAdjustment().adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
+                                                              representation='factor')
         self.assertEqual('Index constitutes are not set', str(em.exception))
 
 

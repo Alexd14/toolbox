@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def calculateIC(yTrue: np.array, yPred: np.array) -> float:
+def calculate_ic(yTrue: np.array, yPred: np.array) -> float:
     """
     computes the information coefficient for the predicted and true variables.
     This function can be given to a sklearn.model_selection Hyper-parameter optimizer.

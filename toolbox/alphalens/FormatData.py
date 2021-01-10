@@ -1,9 +1,9 @@
 import pandas as pd
 
-from toolbox.utils.HandleData import handleDuplicates, makeNanInfSummary
+from toolbox.utils.HandleData import handle_duplicates, makeNanInfSummary
 
 
-def priceFormatForAlphalens(data: pd.DataFrame, factor: str, dateFormat: str = '') -> pd.DataFrame:
+def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '') -> pd.DataFrame:
     """
     formats the price data into the expected format by get_clean_factor_and_forward_returns
     out format of the data frame: index: 'date', columns: 'symbols'
@@ -14,23 +14,23 @@ def priceFormatForAlphalens(data: pd.DataFrame, factor: str, dateFormat: str = '
 
     :param data: the data to be turned into the format expected by prices feild in get_clean_factor_and_forward_returns
     :param factor: the name of the factor column in the passed data
-    :param dateFormat: the format to parse the date column in pd.datetime
+    :param date_format: the format to parse the date column in pd.datetime
     `   pass None if no date conversion is wanted
     :return: data frame with data in format required by factor field in get_clean_factor_and_forward_returns
     """
     data: pd.DataFrame = data.copy()
 
-    _checkColumns(data)
-    _convertToDateTime(data, dateFormat)
+    _check_columns(data)
+    _convert_to_date_time(data, date_format)
 
-    pivotTable: pd.DataFrame = data.pivot_table(index='date', columns='symbol', values=factor)
-    pivotTable.index = pd.DatetimeIndex(pivotTable.index)
+    pivot_table: pd.DataFrame = data.pivot_table(index='date', columns='symbol', values=factor)
+    pivot_table.index = pd.DatetimeIndex(pivot_table.index)
 
-    return pivotTable
+    return pivot_table
 
 
-def factorFormatForAlphalens(data: pd.DataFrame, factor: str, dateFormat: str = '',
-                             maxLoss: float = .1) -> pd.DataFrame:
+def factorFormatForAlphalens(data: pd.DataFrame, factor: str, date_format: str = '',
+                             max_loss: float = .1) -> pd.DataFrame:
     """
     formats the alpha factor data into the expected format by get_clean_factor_and_forward_returns
     data must contain 'date', 'symbol', can take in a dataframe with unlimited columns
@@ -41,27 +41,27 @@ def factorFormatForAlphalens(data: pd.DataFrame, factor: str, dateFormat: str = 
 
     :param data: the data to be turned into the format expected by factor field in get_clean_factor_and_forward_returns
     :param factor: the name of the factor column in the passed data
-    :param dateFormat: the format to parse the date column in pd.datetime
+    :param date_format: the format to parse the date column in pd.datetime
     `   pass None if no date conversion is wanted
-    :param maxLoss: the decimal percent of the factor that can be nan or infinity before we throw an error
+    :param max_loss: the decimal percent of the factor that can be nan or infinity before we throw an error
     :return: data frame with data in required format by factor field in get_clean_factor_and_forward_returns
     """
     data: pd.DataFrame = data.copy()
 
-    _checkColumns(data)
-    _convertToDateTime(data, dateFormat)
+    _check_columns(data)
+    _convert_to_date_time(data, date_format)
 
     # setting the index
-    alphaFactor = data[['date', 'symbol', factor]].set_index(['date', 'symbol'])
+    alpha_factor = data[['date', 'symbol', factor]].set_index(['date', 'symbol'])
     # dropping duplicates and printing a warning
-    alphaFactor = handleDuplicates(df=alphaFactor, outType='Warning', name='Given Factor', drop=True)
+    alpha_factor = handle_duplicates(df=alpha_factor, out_type='Warning', name='Given Factor', drop=True)
     # making a nan and inf summary along with dropping nan's
-    alphaFactor = makeNanInfSummary(df=alphaFactor, maxLoss=maxLoss)
+    alpha_factor = makeNanInfSummary(df=alpha_factor, maxLoss=max_loss)
 
-    return alphaFactor
+    return alpha_factor
 
 
-def _checkColumns(data: pd.DataFrame) -> None:
+def _check_columns(data: pd.DataFrame) -> None:
     """
     checking to make sure the columns contain 'date' & 'symbol'
     :param data: the data frame to check
@@ -73,15 +73,15 @@ def _checkColumns(data: pd.DataFrame) -> None:
             raise ValueError('given df must have required columns \'date\' \'symbol\'')
 
 
-def _convertToDateTime(data: pd.DataFrame, dateFormat: str) -> None:
+def _convert_to_date_time(data: pd.DataFrame, date_format: str) -> None:
     """
     MUTATES the given dataframe
     converts the date column to a pd.dateTime object.
-    If the dateFormat is a empty string then nothing is changed
+    If the date_format is a empty string then nothing is changed
     :param data: the data frame to have the date chamged
-    :param dateFormat: the format of the date time string
+    :param date_format: the format of the date time string
     :return: Void
     """
 
-    if dateFormat != '':
-        data['date'] = pd.to_datetime(data['date'], format=dateFormat, utc=True).dt.date
+    if date_format != '':
+        data['date'] = pd.to_datetime(data['date'], format=date_format, utc=True).dt.date

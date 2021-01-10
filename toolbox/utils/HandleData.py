@@ -2,14 +2,14 @@ import pandas as pd
 import numpy as np
 
 
-def handleDuplicates(df: pd.DataFrame, outType: str, name: str, drop: bool = False, ):
+def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = False, ):
     """
     Checking to see if there are duplicates in the given data frame
     if there are duplicates outType will be used
         Ex: give a Warning or raise ValueError
     :param df: The data we are checking
     :param name: the name of the data to give as output
-    :param outType: what to do do if there are duplicates. Currently supports "Warning", "ValueError"
+    :param out_type: what to do do if there are duplicates. Currently supports "Warning", "ValueError"
     :param drop: boolean to drop the duplicates or not
         if False no data frame will be returned and vice verse
         this param will not matter if outType is a ValueError
@@ -18,14 +18,14 @@ def handleDuplicates(df: pd.DataFrame, outType: str, name: str, drop: bool = Fal
     # seeing if there are duplicates in the factor
     dups = df.duplicated()
     if dups.any():
-        amountOfDups = dups.sum()
-        outString = f'{name} is {round(amountOfDups / len(df), 3)} duplicates, {amountOfDups} rows\n'
-        if outType == 'Warning':
-            Warning(outString)
-        elif outType == 'ValueError':
-            raise ValueError(outString)
+        amount_of_dups = dups.sum()
+        out_string = f'{name} is {round(amount_of_dups / len(df), 3)} duplicates, {amount_of_dups} rows\n'
+        if out_type == 'Warning':
+            Warning(out_string)
+        elif out_type == 'ValueError':
+            raise ValueError(out_string)
         else:
-            raise ValueError(f'outType {outType} not recognised')
+            raise ValueError(f'out_type {out_type} not recognised')
 
         # dropping the duplicates
         if drop:
@@ -44,21 +44,21 @@ def makeNanInfSummary(df: pd.DataFrame, maxLoss: float) -> pd.DataFrame:
     :param maxLoss: max decimal percent of nan and inf we are allowing the df to contain
     :return: pandas data frame with the nan and inf dropped
     """
-    dfNumpy = df.to_numpy()
-    nanArray = np.isnan(dfNumpy)
-    finiteArray = np.logical_or(np.isinf(dfNumpy), np.isneginf(dfNumpy))
+    df_numpy = df.to_numpy()
+    nan_array = np.isnan(df_numpy)
+    finite_array = np.logical_or(np.isinf(df_numpy), np.isneginf(df_numpy))
 
-    if nanArray.any() or (not finiteArray.all()):
-        factorLength = len(df)
-        amountNan = nanArray.sum()
-        amountInf = finiteArray.sum()
-        totalPercentDropped = (amountNan + amountInf) / factorLength
+    if nan_array.any() or (not finite_array.all()):
+        factor_length = len(df)
+        amount_nan = nan_array.sum()
+        amount_inf = finite_array.sum()
+        total_percent_dropped = (amount_nan + amount_inf) / factor_length
 
-        outString = f'Dropped {round(totalPercentDropped * 100, 2)}% of data. ' \
-                    f'{round((amountNan / factorLength) * 100, 2)}% due to nan, ' \
-                    f'{round((amountInf / factorLength) * 100, 2)}% of inf values. Threshold: {maxLoss * 100}%\n'
+        outString = f'Dropped {round(total_percent_dropped * 100, 2)}% of data. ' \
+                    f'{round((amount_nan / factor_length) * 100, 2)}% due to nan, ' \
+                    f'{round((amount_inf / factor_length) * 100, 2)}% of inf values. Threshold: {maxLoss * 100}%\n'
 
-        if totalPercentDropped > maxLoss:
+        if total_percent_dropped > maxLoss:
             raise ValueError('Exceeded Nan Infinity Threshold. ' + outString)
 
         # print out string as a summary
