@@ -173,7 +173,7 @@ def generateIndexes(dataIndex: pd.MultiIndex, evalDays: int, refitEvery: int, ex
     if bool(expanding) & bool(rolling):
         raise ValueError('minTrainDays and rollingDays can not both be defined')
 
-    dates: np.array = dataIndex.get_level_values(0).drop_duplicates().to_series()
+    dates: np.array = dataIndex.get_level_values(0).drop_duplicates().to_numpy()
 
     startPlace = expanding if expanding else rolling
     # dont have to ceil this bc it wont matter with a < operator

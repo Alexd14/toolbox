@@ -185,7 +185,7 @@ class MyTestCase(unittest.TestCase):
             self.fooFeatures.iat[1, 0] = np.nan
             calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.fooTarget, evalDays=1,
                          refitEvery=1)
-        self.assertEqual('There is nan or inf values in the features', str(em.exception))
+        self.assertEqual('There are nan or inf values in the features', str(em.exception))
 
         # features has a inf
         self.examples()
@@ -194,7 +194,7 @@ class MyTestCase(unittest.TestCase):
             self.fooFeatures.iat[1, 0] = np.inf
             calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.fooTarget, evalDays=1,
                          refitEvery=1)
-        self.assertEqual('There is nan or inf values in the features', str(em.exception))
+        self.assertEqual('There are nan or inf values in the features', str(em.exception))
 
         # target has a nan
         self.examples()
@@ -202,7 +202,7 @@ class MyTestCase(unittest.TestCase):
             self.fooTarget.iat[1] = np.nan
             calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.fooTarget, evalDays=1,
                          refitEvery=1)
-        self.assertEqual('There is nan or inf values in the target', str(em.exception))
+        self.assertEqual('There are nan or inf values in the target', str(em.exception))
 
         # target has a inf
         self.examples()
@@ -210,7 +210,7 @@ class MyTestCase(unittest.TestCase):
             self.fooTarget.iat[1] = np.inf
             calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.fooTarget, evalDays=1,
                          refitEvery=1)
-        self.assertEqual('There is nan or inf values in the target', str(em.exception))
+        self.assertEqual('There are nan or inf values in the target', str(em.exception))
 
     @staticmethod
     def turnToDatetime64(convert):
