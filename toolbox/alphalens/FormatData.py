@@ -22,14 +22,14 @@ def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str
 
     _check_columns(data)
     _convert_to_date_time(data, date_format)
+    _join_onto_correct_calendar(data)
 
     pivot_table: pd.DataFrame = data.pivot_table(index='date', columns='symbol', values=factor)
-    pivot_table.index = pd.DatetimeIndex(pivot_table.index)
 
     return pivot_table
 
 
-def factorFormatForAlphalens(data: pd.DataFrame, factor: str, date_format: str = '',
+def factor_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '',
                              max_loss: float = .1) -> pd.DataFrame:
     """
     formats the alpha factor data into the expected format by get_clean_factor_and_forward_returns
@@ -84,4 +84,10 @@ def _convert_to_date_time(data: pd.DataFrame, date_format: str) -> None:
     """
 
     if date_format != '':
-        data['date'] = pd.to_datetime(data['date'], format=date_format, utc=True).dt.date
+        data['date'] = pd.to_datetime(data['date'].to_numpy(), format=date_format, utc=True)
+
+
+def _join_onto_correct_calendar(data: pd.DataFrame):
+    """
+    joins the given data frame onto a complete
+    """

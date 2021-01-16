@@ -17,10 +17,9 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         )
 
         self.ca = ConstituteAdjustment()
-        self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
-                               ending_date=Timestamp(year=2010, month=1, day=12),
-                               index_constitutes=self.foo_constitutes, date_format='%Y%m%d',
-                               pad=2)
+        self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4, tz='UTC'),
+                               ending_date=Timestamp(year=2010, month=1, day=12, tz='UTC'),
+                               index_constitutes=self.foo_constitutes, date_format='%Y%m%d')
 
         self.foo_data = DataFrame(
             data=[['BOB', '2010-01-04', 50],
@@ -35,7 +34,9 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                   ['LARY', '2010-01-06', 22],
                   ['LARY', '2010-01-07', 23],
                   ['LARY', '2010-01-08', 24],  # should not be included
-                  ['LARY', '2011-07-01', 24],  # should not be included
+                  ['LARY', '2010-01-11', 25],  # should not be included
+                  ['LARY', '2010-01-12', 26],  # should not be included
+                  ['LARY', '2010-01-13', 27],  # should not be included
                   ['FOO', '2010-01-08', 0]],  # should be ignored
             columns=['symbol', 'date', 'factor'])
 
@@ -53,13 +54,12 @@ class ConstituteAdjustmentTest(unittest.TestCase):
             columns=['symbol', 'date', 'factor']).set_index(['date', 'symbol'])
 
         pricing_data = DataFrame(
-            data=[['BOB', '2010-01-13', 50],
-                  ['BOB', '2010-01-14', 50],
-                  ['LARY', '2010-01-08', 24],
-                  ['LARY', '2011-01-11', 24]],
+            data=[['LARY', Timestamp('2010-01-08', tz='UTC'), 24],
+                  ['LARY', Timestamp('2010-01-11', tz='UTC'), 25],
+                  ['LARY', Timestamp('2010-01-12', tz='UTC'), 26]],
             columns=['symbol', 'date', 'factor']).set_index(['date', 'symbol'])
 
-        self.adjusted_pricing = concat([pricing_data, self.adjusted_foo]).sort_index()
+        self.adjusted_pricing = concat([pricing_data, self.adjusted_foo]).sort_values(['symbol', 'date'])
 
     #
     #  ************************************  add_index_info  ************************************
@@ -85,12 +85,11 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                              (Timestamp('2010-01-07', tz='UTC'), 'LARY')]
         self.assertEqual(factor_components, self.ca.factor_components)
 
-        # # for pricing
-        # pricing_components = factor_components + [(Timestamp('2010-01-13', tz='UTC'), 'BOB'),
-        #                                           (Timestamp('2010-01-14', tz='UTC'), 'BOB'),
-        #                                           (Timestamp('2010-01-08', tz='UTC'), 'LARY'),
-        #                                           (Timestamp('2010-01-11', tz='UTC'), 'LARY')]
-        # self.assertEqual(pricing_components, self.ca.pricing_components)
+        # for pricing
+        pricing_components = factor_components + [(Timestamp('2010-01-08', tz='UTC'), 'LARY'),
+                                                  (Timestamp('2010-01-11', tz='UTC'), 'LARY'),
+                                                  (Timestamp('2010-01-12', tz='UTC'), 'LARY')]
+        self.assertEqual(pricing_components, self.ca.pricing_components)
 
     def test_throw_column_error(self):
         """
@@ -102,8 +101,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
             self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
                                    ending_date=Timestamp(year=2010, month=1, day=12),
                                    date_format='%Y%m%d',
-                                   index_constitutes=DataFrame(columns=['foo', 'foo1', 'foo2']),
-                                   pad=10)
+                                   index_constitutes=DataFrame(columns=['foo', 'foo1', 'foo2']))
         self.assertEqual('Required column "symbol" is not present', str(em.exception))
 
     def test_duplicate_symbols(self):
@@ -118,8 +116,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
             self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
                                    ending_date=Timestamp(year=2010, month=1, day=12),
                                    date_format='%Y%m%d',
-                                   index_constitutes=self.foo_constitutes,
-                                   pad=10)
+                                   index_constitutes=self.foo_constitutes)
         self.assertEqual('The column symbols is 0.333 duplicates, 1 rows\n', str(em.exception))
 
     #
@@ -133,18 +130,18 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         """
         self.examples()
         filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
-                                                      representation='factor')
+                                                      contents='factor')
         self.assertTrue(self.adjusted_foo.equals(filtered))
 
-    # def test_pad_adjust_data_for_membership(self):
-    #     """
-    #     ensuring that pad works correctly for adjust_data_for_membership
-    #     """
-    #     self.examples()
-    #     filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
-    #                                                   representation='pricing')
-    #
-    #     self.assertTrue(self.adjusted_pricing.equals(filtered))
+    def test_pad_adjust_data_for_membership(self):
+        """
+        ensuring that the pricing works correctly for adjust_data_for_membership
+        """
+        self.examples()
+        filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
+                                                      contents='pricing')
+
+        self.assertTrue(self.adjusted_pricing.equals(filtered))
 
     def test_throw_error_adjust_data_for_membership(self):
         """
@@ -154,7 +151,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
 
         with self.assertRaises(ValueError) as em:
             self.ca.adjust_data_for_membership(data=DataFrame(columns=['foo', 'notSymbol', 'factor']),
-                                               representation='factor')
+                                               contents='factor')
         self.assertEqual('Required column "date" is not present', str(em.exception))
 
     def test_no_index_set_adjust_data_for_membership(self):
@@ -166,7 +163,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
 
         with self.assertRaises(ValueError) as em:
             ConstituteAdjustment().adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
-                                                              representation='factor')
+                                                              contents='factor')
         self.assertEqual('Index constitutes are not set', str(em.exception))
 
 
