@@ -85,9 +85,3 @@ def _convert_to_date_time(data: pd.DataFrame, date_format: str) -> None:
 
     if date_format != '':
         data['date'] = pd.to_datetime(data['date'].to_numpy(), format=date_format, utc=True)
-
-
-def _join_onto_correct_calendar(data: pd.DataFrame):
-    """
-    joins the given data frame onto a complete
-    """
