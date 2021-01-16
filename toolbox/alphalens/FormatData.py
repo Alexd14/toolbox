@@ -22,7 +22,6 @@ def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str
 
     _check_columns(data)
     _convert_to_date_time(data, date_format)
-    _join_onto_correct_calendar(data)
 
     pivot_table: pd.DataFrame = data.pivot_table(index='date', columns='symbol', values=factor)
 
