@@ -20,15 +20,18 @@ class ConstituteAdjustment:
         self.__index_constitutes_factor: List[Tuple[any, any]] = []
         self.__index_constitutes_pricing: List[Tuple[any, any]] = []
 
-    def add_index_info(self, index_constitutes: pd.DataFrame, starting_date: pd.Timestamp = None,
-                       ending_date: pd.Timestamp = None, date_format: str = '') -> None:
+    def add_index_info(self, index_constitutes: pd.DataFrame, start_date: pd.Timestamp = None,
+                       end_date: pd.Timestamp = None, date_format: str = '') -> None:
         """
         adds constitute data to the ConstituteAdjustment object.
         creates and stores a pandas multiIndex index with (date, symbol)
         every date a symbol exists in the equity index it will be in the multiIndex
         method has no side effects on passed data. creates a deep copy of indexConstitutes
         If there are duplicate symbols then a Value error will be raised
-        ASSUMES DATES ARE IN TZ: UTZ
+
+        Creates a prices and factors index.
+        factors index is simply the range of "from" to "thru"
+        Prices indexes have period of the "from" field (df) to end_date param (avoids bias)
 
         :param index_constitutes: a pandas data frame containing index component information.
                                 MUST HAVE COLUMNS: 'symbol' representing the symbol,
@@ -37,8 +40,8 @@ class ConstituteAdjustment:
                                 If 'from', 'thru' are not pd.TimeStamps than a date_format MUST BE PASSED.
                                 if no date_format is passed its assumed that they are in a pd.TimeStamp object
 
-        :param starting_date: The first date we want to get data for, needs to have tz of UTC
-        :param ending_date: The last first date we want to get data for, needs to have tz of UTC
+        :param start_date: The first date we want to get data for, needs to have tz of UTC
+        :param end_date: The last first date we want to get data for, needs to have tz of UTC
         :param date_format: if fromCol AND thruCol are both strings then the format to parse them in to dates
         :return: None
         """
@@ -59,7 +62,7 @@ class ConstituteAdjustment:
             index_constitutes['thru'] = pd.to_datetime(index_constitutes['thru'], format=date_format) \
                 .dt.tz_localize('UTC')
 
-        relevant_cal = mcal.get_calendar('NYSE').valid_days(start_date=starting_date, end_date=ending_date).to_series()
+        relevant_cal = mcal.get_calendar('NYSE').valid_days(start_date=start_date, end_date=end_date).to_series()
 
         # making a list of tuples to quickly index the data
         indexes_factor: List[Tuple[any, any]] = []
@@ -88,9 +91,14 @@ class ConstituteAdjustment:
         this method has no side effects on passed data
         Must contain columns named 'symbol', 'date' otherwise can have as may columns as desired
 
-        Ex: AAPl joined S&P500 on 2012-01-01 and leaves 2015-01-01. GOOGL joined S&P500 on 2014-01-01 and is still in
-        the index today. When passing data to the adjust_data_for_membership method it will only return AAPL data in range
-        2012-01-01 to 2015-01-01 and google data in the range of 2014-01-01 to the current day.
+        factor:
+            Ex: AAPl joined S&P500 on 2012-01-01 and leaves 2015-01-01. GOOGL joined S&P500 on 2014-01-01 and is still
+            in the index at the time of end_date passed in add_index_info. When passing data to the
+            adjust_data_for_membership method it will only return AAPL factor data in range
+            2012-01-01 to 2015-01-01 and google data in the range of 2014-01-01 to the end_date.
+        pricing:
+            keeping with the example above we would get AAPL pricing data in range 2012-01-01 to end_date and google
+            data in the range of 2014-01-01 to the end_date.
 
         :param data: a pandas dataframe to be filtered.
                     Must have a default index.

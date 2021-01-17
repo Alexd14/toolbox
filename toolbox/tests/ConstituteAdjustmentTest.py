@@ -17,8 +17,8 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         )
 
         self.ca = ConstituteAdjustment()
-        self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4, tz='UTC'),
-                               ending_date=Timestamp(year=2010, month=1, day=12, tz='UTC'),
+        self.ca.add_index_info(start_date=Timestamp(year=2010, month=1, day=4, tz='UTC'),
+                               end_date=Timestamp(year=2010, month=1, day=12, tz='UTC'),
                                index_constitutes=self.foo_constitutes, date_format='%Y%m%d')
 
         self.foo_data = DataFrame(
@@ -98,8 +98,8 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         self.examples()
 
         with self.assertRaises(ValueError) as em:
-            self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
-                                   ending_date=Timestamp(year=2010, month=1, day=12),
+            self.ca.add_index_info(start_date=Timestamp(year=2010, month=1, day=4),
+                                   end_date=Timestamp(year=2010, month=1, day=12),
                                    date_format='%Y%m%d',
                                    index_constitutes=DataFrame(columns=['foo', 'foo1', 'foo2']))
         self.assertEqual('Required column "symbol" is not present', str(em.exception))
@@ -113,8 +113,8 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         self.foo_constitutes.iat[1, 0] = 'BOB'
 
         with self.assertRaises(ValueError) as em:
-            self.ca.add_index_info(starting_date=Timestamp(year=2010, month=1, day=4),
-                                   ending_date=Timestamp(year=2010, month=1, day=12),
+            self.ca.add_index_info(start_date=Timestamp(year=2010, month=1, day=4),
+                                   end_date=Timestamp(year=2010, month=1, day=12),
                                    date_format='%Y%m%d',
                                    index_constitutes=self.foo_constitutes)
         self.assertEqual('The column symbols is 0.333 duplicates, 1 rows\n', str(em.exception))

@@ -12,10 +12,10 @@ def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str
 
     does not mutate the given dataframe
 
-    :param data: the data to be turned into the format expected by prices feild in get_clean_factor_and_forward_returns
+    :param data: the data to be turned into the format expected by prices field in get_clean_factor_and_forward_returns
     :param factor: the name of the factor column in the passed data
     :param date_format: the format to parse the date column in pd.datetime
-    `   pass None if no date conversion is wanted
+    `   dont pass anything if no date conversion is wanted
     :return: data frame with data in format required by factor field in get_clean_factor_and_forward_returns
     """
     data: pd.DataFrame = data.copy()
@@ -28,12 +28,12 @@ def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str
     return pivot_table
 
 
-def factor_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '',
-                             max_loss: float = .1) -> pd.DataFrame:
+def factor_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '',  max_loss: float = .1) -> \
+        pd.DataFrame:
     """
     formats the alpha factor data into the expected format by get_clean_factor_and_forward_returns
     data must contain 'date', 'symbol', can take in a dataframe with unlimited columns
-    out format of the data frame: index: ('date', 'symbols'), columns: 'singleFactor'
+    out format of the data frame: index: ('date', 'symbols'), columns: 'factor'
     given df the 2 required columns names: 'date', 'symbol'
 
     does not mutate the given data frame
@@ -41,7 +41,7 @@ def factor_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: st
     :param data: the data to be turned into the format expected by factor field in get_clean_factor_and_forward_returns
     :param factor: the name of the factor column in the passed data
     :param date_format: the format to parse the date column in pd.datetime
-    `   pass None if no date conversion is wanted
+    `   pass nothing if no date conversion is wanted
     :param max_loss: the decimal percent of the factor that can be nan or infinity before we throw an error
     :return: data frame with data in required format by factor field in get_clean_factor_and_forward_returns
     """
