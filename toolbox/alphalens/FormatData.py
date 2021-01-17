@@ -1,6 +1,6 @@
 import pandas as pd
 
-from toolbox.utils.HandleData import handle_duplicates, makeNanInfSummary
+from toolbox.utils.HandleData import handle_duplicates, make_nan_inf_summary
 
 
 def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '') -> pd.DataFrame:
@@ -55,7 +55,7 @@ def factor_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: st
     # dropping duplicates and printing a warning
     alpha_factor = handle_duplicates(df=alpha_factor, out_type='Warning', name='Given Factor', drop=True)
     # making a nan and inf summary along with dropping nan's
-    alpha_factor = makeNanInfSummary(df=alpha_factor, maxLoss=max_loss)
+    alpha_factor = make_nan_inf_summary(df=alpha_factor, max_loss=max_loss)
 
     return alpha_factor
 

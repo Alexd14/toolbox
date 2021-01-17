@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = False, ):
+def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = False) -> pd.DataFrame:
     """
     Checking to see if there are duplicates in the given data frame
     if there are duplicates outType will be used
@@ -35,13 +35,13 @@ def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = F
         return df
 
 
-def makeNanInfSummary(df: pd.DataFrame, maxLoss: float) -> pd.DataFrame:
+def make_nan_inf_summary(df: pd.DataFrame, max_loss: float) -> pd.DataFrame:
     """
     makes a summary fot the the amount of nan and infinity values in the given data frame
     will throw a ValueError if the percent of nan and inf is greater than the given threshold
     prints a summary of the nan's and inf of there are any
     :param df: the data frame we are checking
-    :param maxLoss: max decimal percent of nan and inf we are allowing the df to contain
+    :param max_loss: max decimal percent of nan and inf we are allowing the df to contain
     :return: pandas data frame with the nan and inf dropped
     """
     df_numpy = df.to_numpy()
@@ -56,9 +56,9 @@ def makeNanInfSummary(df: pd.DataFrame, maxLoss: float) -> pd.DataFrame:
 
         outString = f'Dropped {round(total_percent_dropped * 100, 2)}% of data. ' \
                     f'{round((amount_nan / factor_length) * 100, 2)}% due to nan, ' \
-                    f'{round((amount_inf / factor_length) * 100, 2)}% of inf values. Threshold: {maxLoss * 100}%\n'
+                    f'{round((amount_inf / factor_length) * 100, 2)}% of inf values. Threshold: {max_loss * 100}%\n'
 
-        if total_percent_dropped > maxLoss:
+        if total_percent_dropped > max_loss:
             raise ValueError('Exceeded Nan Infinity Threshold. ' + outString)
 
         # print out string as a summary
