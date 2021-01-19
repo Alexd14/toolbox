@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from toolbox.utils.SliceHolder import SliceHolder
-from toolbox.ml.MLFactorCalculation import generate_indexes, calcMlFactor, ModelWrapper
+from toolbox.ml.MLFactorCalculation import generate_indexes, calc_ml_factor, ModelWrapper
 
 
 class MyTestCase(unittest.TestCase):
@@ -75,7 +75,7 @@ class MyTestCase(unittest.TestCase):
         self.expected_index_r7_8_30 = self.turn_to_datetime64(self.expected_index_r7_8_30)
 
         class FooModel(ModelWrapper, ABC):
-            def fitModel(self, tf: pd.DataFrame, tt: pd.Series):
+            def fit_model(self, tf: pd.DataFrame, tt: pd.Series):
                 pass
 
         self.fooModel = FooModel()
@@ -136,25 +136,25 @@ class MyTestCase(unittest.TestCase):
 
         # eval_days
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=0,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=0,
                          refit_every=1, expanding=1)
         self.assertEqual('eval_days and/or refit_every must be greater than zero', str(em.exception))
 
         # refit_every
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=0, expanding=1)
         self.assertEqual('eval_days and/or refit_every must be greater than zero', str(em.exception))
 
         # expanding
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1, expanding=0)
         self.assertEqual('expanding must be greater than zero', str(em.exception))
 
         # rolling
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1, rolling=0)
         self.assertEqual('rolling must be greater than zero', str(em.exception))
 
@@ -165,12 +165,12 @@ class MyTestCase(unittest.TestCase):
         self.examples()
 
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1, rolling=1, expanding=1)
         self.assertEqual('minTrainDays and rollingDays can not both be defined', str(em.exception))
 
         with self.assertRaises(ValueError) as em:
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1)
         self.assertEqual('minTrainDays or rollingDays must be defined', str(em.exception))
 
@@ -183,7 +183,7 @@ class MyTestCase(unittest.TestCase):
         with self.assertRaises(ValueError) as em:
             self.fooFeatures[0] = 0.0
             self.fooFeatures.iat[1, 0] = np.nan
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1)
         self.assertEqual('There are nan or inf values in the features', str(em.exception))
 
@@ -192,7 +192,7 @@ class MyTestCase(unittest.TestCase):
         with self.assertRaises(ValueError) as em:
             self.fooFeatures[0] = 0.0
             self.fooFeatures.iat[1, 0] = np.inf
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1)
         self.assertEqual('There are nan or inf values in the features', str(em.exception))
 
@@ -200,7 +200,7 @@ class MyTestCase(unittest.TestCase):
         self.examples()
         with self.assertRaises(ValueError) as em:
             self.foo_target.iat[1] = np.nan
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1)
         self.assertEqual('There are nan or inf values in the target', str(em.exception))
 
@@ -208,7 +208,7 @@ class MyTestCase(unittest.TestCase):
         self.examples()
         with self.assertRaises(ValueError) as em:
             self.foo_target.iat[1] = np.inf
-            calcMlFactor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
+            calc_ml_factor(model=self.fooModel, features=self.fooFeatures, target=self.foo_target, eval_days=1,
                          refit_every=1)
         self.assertEqual('There are nan or inf values in the target', str(em.exception))
 

@@ -69,7 +69,7 @@ class ModelWrapper(ABC):
         transformed_features, transformedPredict = self.transform_data(train_features, train_target, predict)
 
         # fitting and making predictions with user defined model
-        model: any = self.fitModel(transformed_features, train_target)
+        model: any = self.fit_model(transformed_features, train_target)
         predicted: pd.Series = pd.Series(data=model.predict(transformedPredict), index=predict.index)
 
         # freeing up memory
