@@ -13,7 +13,7 @@ from toolbox.utils.SliceHolder import SliceHolder
 
 class ModelWrapper(ABC):
     @abstractmethod
-    def fitModel(self, train_features: pd.DataFrame, train_target: pd.Series) -> any:
+    def fit_model(self, train_features: pd.DataFrame, train_target: pd.Series) -> any:
         """
         Wraps a model for use by the calcMlFactor function.
         Fits a model to the given features. then returns the fit model.
@@ -79,7 +79,7 @@ class ModelWrapper(ABC):
         return predicted
 
 
-def calcMlFactor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, eval_days: int, refit_every: int,
+def calc_ml_factor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, eval_days: int, refit_every: int,
                  expanding: int = None, rolling: int = None) -> pd.Series:
     """
     Calculates an alpha factor using a ML factor combination method.
