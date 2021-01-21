@@ -3,84 +3,16 @@ import gc
 import pandas as pd
 import numpy as np
 
-from abc import ABC, abstractmethod
 from typing import Generator, Tuple, List
 
 from tqdm import tqdm
 
+from toolbox.ml.ModelWrapper import ModelWrapper
 from toolbox.utils.SliceHolder import SliceHolder
 
 
-class ModelWrapper(ABC):
-    @abstractmethod
-    def fit_model(self, train_features: pd.DataFrame, train_target: pd.Series) -> any:
-        """
-        Wraps a model for use by the calcMlFactor function.
-        Fits a model to the given features. then returns the fit model.
-        If the fit model does not contain a "predict" method then predict mut be overwritten.
-
-        :param train_features: the features to train the model on
-            Must have the same index as train_target
-        :param train_target: the target for the train_features.
-            Must have the same index as train_features
-        :return: a model fit to the given features and targets
-        """
-        pass
-
-    @staticmethod
-    def transform_data(train_features: pd.DataFrame, train_target: pd.Series, predict: pd.DataFrame) -> Tuple[
-        pd.DataFrame, pd.DataFrame]:
-        """
-        *** Do not fit any transformations on the predict data. That WILL result in lookahead Bias.***
-        Only manipulate the predict data with transformations fit with the train_features
-
-        This method is used to preprocess the data before the training, and predicting data is passed to the model
-
-        The indexes must not be changed. However columns can be dropped and altered.
-        Any change to the train_target must also be done to the predict data.
-
-        Example use: fit a PCA to the train_features then transform the train_features and predict data using said PCA.
-                or use RFE to reduce dimensionality
-
-        :param train_features: the features to train the model on
-        :param train_target: the target for the train_features
-        :param predict: The data to make predictions on
-        :return: the transformed (train_features, predict) with no index changes.
-        """
-        return train_features, predict
-
-    def predict(self, train_features: pd.DataFrame, train_target: pd.Series, predict: pd.DataFrame) -> pd.Series:
-        """
-        fits a model to the given training data and then makes predictions with the fitted model
-        fits a model by calling "fitModel".
-        assumes the "fitModel" returns a model with a "predict" method.
-
-        :param train_features: the features to train the model on
-            Must have the same index as train_target
-        :param train_target: the target for the train_features.
-            Must have the same index as train_features
-        :param predict: The data to make predictions on
-        :return: a Tuple of pandas Series with the predictions and a float what s the
-        """
-        if not train_features.index.equals(train_target.index):
-            raise ValueError('The index for the features and target is different')
-
-        # allowing the user to adjust the data before fitting, assuming that the user does not mess up the indexes
-        transformed_features, transformedPredict = self.transform_data(train_features, train_target, predict)
-
-        # fitting and making predictions with user defined model
-        model: any = self.fit_model(transformed_features, train_target)
-        predicted: pd.Series = pd.Series(data=model.predict(transformedPredict), index=predict.index)
-
-        # freeing up memory
-        del model, train_features, train_target, predict, transformed_features, transformedPredict
-        gc.collect()
-
-        return predicted
-
-
 def calc_ml_factor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, eval_days: int, refit_every: int,
-                 expanding: int = None, rolling: int = None) -> pd.Series:
+                   expanding: int = None, rolling: int = None) -> pd.Series:
     """
     Calculates an alpha factor using a ML factor combination method.
     The model is fit and predictions are made in a ModelWrapper
@@ -113,9 +45,9 @@ def calc_ml_factor(model: ModelWrapper, features: pd.DataFrame, target: pd.Serie
     features_copy: pd.DataFrame = features.copy().sort_index()
     target_copy: pd.Series = target.copy().sort_index()
 
-    if (np.isnan(features_copy.values).any()) or (not np.isfinite(features_copy.values).all()):
+    if not np.isfinite(features_copy.values).all():
         raise ValueError('There are nan or inf values in the features')
-    if (np.isnan(target_copy.values).any()) or (not np.isfinite(target_copy.values).all()):
+    if not np.isfinite(target_copy.values).all():
         raise ValueError('There are nan or inf values in the target')
     if not isinstance(features_copy.index, pd.MultiIndex):
         raise ValueError('Features and target must have a pd.MultiIndex of (pd.Timestamp, str)')
@@ -196,4 +128,3 @@ def generate_indexes(data_index: pd.MultiIndex, eval_days: int, refit_every: int
 
         i += 1
         yield train_slice, predict_slice
-
