@@ -122,7 +122,10 @@ class ConstituteAdjustment:
 
         # seeing if we have to convert from and thru to series of timestamps
         if date_format != '':
-            data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_localize('UTC')
+            try:
+                data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_localize('UTC')
+            except TypeError:
+                data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_convert('UTC')
 
         data.set_index(['date', 'symbol'], inplace=True)
 
