@@ -1,6 +1,11 @@
 import unittest
 
-from pandas import Timestamp, DataFrame, concat
+from pandas import (
+    Timestamp,
+    DataFrame,
+    concat,
+    MultiIndex
+)
 
 from toolbox.constitutes.ConstituteAdjustment import ConstituteAdjustment
 
@@ -72,6 +77,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         irrelevant symbols
         """
         self.examples()
+
         # for factors
         factor_components = [(Timestamp('2010-01-04', tz='UTC'), 'BOB'),
                              (Timestamp('2010-01-05', tz='UTC'), 'BOB'),
@@ -83,13 +89,15 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                              (Timestamp('2010-01-05', tz='UTC'), 'LARY'),
                              (Timestamp('2010-01-06', tz='UTC'), 'LARY'),
                              (Timestamp('2010-01-07', tz='UTC'), 'LARY')]
-        self.assertEqual(factor_components, self.ca.factor_components)
+
+        print(self.ca.factor_components)
+        self.assertTrue(MultiIndex.from_tuples(factor_components).equals(self.ca.factor_components))
 
         # for pricing
         pricing_components = factor_components + [(Timestamp('2010-01-08', tz='UTC'), 'LARY'),
                                                   (Timestamp('2010-01-11', tz='UTC'), 'LARY'),
                                                   (Timestamp('2010-01-12', tz='UTC'), 'LARY')]
-        self.assertEqual(pricing_components, self.ca.pricing_components)
+        self.assertTrue(MultiIndex.from_tuples(pricing_components).equals(self.ca.pricing_components))
 
     def test_throw_column_error(self):
         """
