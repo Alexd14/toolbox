@@ -1,8 +1,8 @@
 import pandas as pd
-from typing import List, Tuple, Optional
+from typing import List, Optional
 import pandas_market_calendars as mcal
 
-from toolbox.utils.HandleData import handle_duplicates
+from toolbox.utils.handle_data import handle_duplicates
 
 
 class ConstituteAdjustment:
@@ -143,14 +143,14 @@ class ConstituteAdjustment:
                 f'Representation {contents} is not recognised. Valid arguments are "pricing", "factor"')
 
     @property
-    def factor_components(self) -> Optional[List[Tuple[any, any]]]:
+    def factor_components(self) -> Optional[pd.MultiIndex]:
         """
         :return: Mutable list of tuples which represent the factor index constitutes
         """
         return self.__index_constitutes_factor
 
     @property
-    def pricing_components(self) -> Optional[List[Tuple[any, any]]]:
+    def pricing_components(self) -> Optional[pd.MultiIndex]:
         """
         :return: Mutable list of tuples which represent the pricing index constitutes
         """

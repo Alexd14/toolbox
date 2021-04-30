@@ -1,6 +1,6 @@
 import pandas as pd
 
-from toolbox.utils.HandleData import handle_duplicates, make_nan_inf_summary
+from toolbox.utils.handle_data import handle_duplicates, make_nan_inf_summary
 
 
 def price_format_for_alphalens(data: pd.DataFrame, factor: str, date_format: str = '') -> pd.DataFrame:

@@ -7,8 +7,8 @@ from typing import Generator, Tuple, List
 
 from tqdm import tqdm
 
-from toolbox.ml.ModelWrapper import ModelWrapper
-from toolbox.utils.SliceHolder import SliceHolder
+from toolbox.ml.model_wrapper import ModelWrapper
+from toolbox.utils.slice_holder import SliceHolder
 
 
 def calc_ml_factor(model: ModelWrapper, features: pd.DataFrame, target: pd.Series, eval_days: int, refit_every: int,

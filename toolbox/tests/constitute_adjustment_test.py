@@ -7,7 +7,7 @@ from pandas import (
     MultiIndex
 )
 
-from toolbox.constitutes.ConstituteAdjustment import ConstituteAdjustment
+from toolbox.constitutes.constitute_adjustment import ConstituteAdjustment
 
 
 class ConstituteAdjustmentTest(unittest.TestCase):
@@ -90,7 +90,6 @@ class ConstituteAdjustmentTest(unittest.TestCase):
                              (Timestamp('2010-01-06', tz='UTC'), 'LARY'),
                              (Timestamp('2010-01-07', tz='UTC'), 'LARY')]
 
-        print(self.ca.factor_components)
         self.assertTrue(MultiIndex.from_tuples(factor_components).equals(self.ca.factor_components))
 
         # for pricing
