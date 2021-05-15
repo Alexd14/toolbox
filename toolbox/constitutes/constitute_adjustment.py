@@ -11,12 +11,16 @@ class ConstituteAdjustment:
     on given constitute data
     """
 
-    def __init__(self):
+    def __init__(self, id_col: str = 'symbol'):
         """
-        empty constructor for ConstituteAdjustment
-        self.__index_constitutes_factor: holds the index constitutes for the factor in a MultiIndex of date, symbol
-        self.__index_constitutes_pricing: holds the index constitutes for the pricing in a MultiIndex of date, symbol
+        constructor for ConstituteAdjustment
+        :param id_col: the asset identifier column for the data that will be passed
+        self.__index_constitutes_factor: holds the index constitutes for the factor in a MultiIndex of date,
+            self.__id_col
+        self.__index_constitutes_pricing: holds the index constitutes for the pricing in a MultiIndex of date,
+            self.__id_col
         """
+        self.__id_col = id_col
         self.__index_constitutes_factor: Optional[pd.MultiIndex] = None
         self.__index_constitutes_pricing: Optional[pd.MultiIndex] = None
 
@@ -24,17 +28,17 @@ class ConstituteAdjustment:
                        end_date: pd.Timestamp = None, date_format: str = '') -> None:
         """
         adds constitute data to the ConstituteAdjustment object.
-        creates and stores a pandas multiIndex index with (date, symbol)
-        every date a symbol exists in the equity index it will be in the multiIndex
+        creates and stores a pandas multiIndex index with (date, self.__id_col)
+        every date a self.__id_col exists in the equity index it will be in the multiIndex
         method has no side effects on passed data. creates a deep copy of indexConstitutes
-        If there are duplicate symbols then a Value error will be raised
+        If there are duplicate self.__id_col then a Value error will be raised
 
         Creates a prices and factors index.
         factors index is simply the range of "from" to "thru"
         Prices indexes have period of the "from" field (df) to end_date param (avoids bias)
 
         :param index_constitutes: a pandas data frame containing index component information.
-                                MUST HAVE COLUMNS: 'symbol' representing the symbol,
+                                MUST HAVE COLUMNS: self.__id_col representing the asset identifier,
                                                    'from' start trading date on the index,
                                                    'thru' end trading date on the index,
                                 If 'from', 'thru' are not pd.TimeStamps than a date_format MUST BE PASSED.
@@ -43,16 +47,17 @@ class ConstituteAdjustment:
         :param start_date: The first date we want to get data for, needs to have tz of UTC
         :param end_date: The last first date we want to get data for, needs to have tz of UTC
         :param date_format: if fromCol AND thruCol are both strings then the format to parse them in to dates
+        :param id_col: the asset identfier column
         :return: None
         """
-        # making sure date and symbol are in the columns
-        _check_columns(['symbol', 'from', 'thru'], index_constitutes.columns)
+        # making sure date and self.__id_col are in the columns
+        _check_columns([self.__id_col, 'from', 'thru'], index_constitutes.columns)
 
         # setting a copy of indexConstitutes so we dont mutate anything
-        index_constitutes: pd.DataFrame = index_constitutes.copy()[['symbol', 'from', 'thru']]
+        index_constitutes: pd.DataFrame = index_constitutes[[self.__id_col, 'from', 'thru']].copy()
 
-        # will throw an error if there sre duplicate symbols
-        handle_duplicates(df=index_constitutes[['symbol']], out_type='ValueError', name='The column symbols',
+        # will throw an error if there sre duplicate self.__id_col
+        handle_duplicates(df=index_constitutes[[self.__id_col]], out_type='ValueError', name='The column symbols',
                           drop=False)
 
         # seeing if we have to convert from and thru to series of timestamps
@@ -69,7 +74,7 @@ class ConstituteAdjustment:
         indexes_pricing: List[pd.Series] = []
 
         for row in index_constitutes.iterrows():
-            symbol = row[1]['symbol']
+            symbol = row[1][self.__id_col]
 
             # getting the relevant dates for the factor
             date_range_factors: pd.Series = relevant_cal.loc[row[1]['from']: row[1]['thru']]
@@ -85,15 +90,15 @@ class ConstituteAdjustment:
             )
 
         # getting the index of the concatenated Series
-        self.__index_constitutes_factor = pd.concat(indexes_factor).index.set_names(['date', 'symbol'])
-        self.__index_constitutes_pricing = pd.concat(indexes_pricing).index.set_names(['date', 'symbol'])
+        self.__index_constitutes_factor = pd.concat(indexes_factor).index.set_names(['date', self.__id_col])
+        self.__index_constitutes_pricing = pd.concat(indexes_pricing).index.set_names(['date', self.__id_col])
 
     def adjust_data_for_membership(self, data: pd.DataFrame, contents: str, date_format: str = '') -> pd.DataFrame:
         """
         adjusts the data set accounting for when assets are a member of the index defined in add_index_info.
         add_index_info must be declared before this method
         this method has no side effects on passed data
-        Must contain columns named 'symbol', 'date' otherwise can have as may columns as desired
+        Must contain columns named self.__id_col, 'date' otherwise can have as may columns as desired
 
         factor:
             Ex: AAPl joined S&P500 on 2012-01-01 and leaves 2015-01-01. GOOGL joined S&P500 on 2014-01-01 and is still
@@ -106,7 +111,7 @@ class ConstituteAdjustment:
 
         :param data: a pandas dataframe to be filtered.
                     Must have a default index.
-                    Must have columns named 'symbol', 'date'
+                    Must have columns named self.__id_col, 'date'
         :param contents: Is the data set, "pricing" or "factor".
         :param date_format: the format of the date column if the date column is a string.
         :return: a indexed data frame adjusted for index constitutes
@@ -116,8 +121,8 @@ class ConstituteAdjustment:
         if self.__index_constitutes_pricing is None:
             raise ValueError('Index constitutes are not set')
 
-        # making sure date and symbol are in the columns
-        _check_columns(['date', 'symbol'], data.columns)
+        # making sure date and self.__id_col are in the columns
+        _check_columns(['date', self.__id_col], data.columns)
 
         # setting a copy of data so we dont mutate anything
         data: pd.DataFrame = data.copy()
@@ -131,13 +136,13 @@ class ConstituteAdjustment:
             except TypeError:
                 data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_convert('UTC')
 
-        data.set_index(['date', 'symbol'], inplace=True)
+        data.set_index(['date', self.__id_col], inplace=True)
 
         # join is about 40% faster then reindexing
         if contents == 'pricing':
-            return self.__index_constitutes_pricing.to_frame().join(data).drop(['date', 'symbol'], axis=1)
+            return self.__index_constitutes_pricing.to_frame().join(data).drop(['date', self.__id_col], axis=1)
         if contents == 'factor':
-            return self.__index_constitutes_factor.to_frame().join(data).drop(['date', 'symbol'], axis=1)
+            return self.__index_constitutes_factor.to_frame().join(data).drop(['date', self.__id_col], axis=1)
         else:
             raise ValueError(
                 f'Representation {contents} is not recognised. Valid arguments are "pricing", "factor"')
