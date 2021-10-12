@@ -1,5 +1,7 @@
+from typing import List, Optional, Union
+
+import duckdb
 import pandas as pd
-from typing import List, Optional
 import pandas_market_calendars as mcal
 
 from toolbox.utils.handle_data import handle_duplicates
@@ -11,21 +13,23 @@ class ConstituteAdjustment:
     on given constitute data
     """
 
-    def __init__(self, id_col: str = 'symbol'):
+    def __init__(self, id_col: str = 'symbol', date_type: str = 'timestamp'):
         """
         constructor for ConstituteAdjustment
         :param id_col: the asset identifier column for the data that will be passed
+        :param date_type: should the date be outputted as a pd.Period or a pd.Timestamp?
         self.__index_constitutes_factor: holds the index constitutes for the factor in a MultiIndex of date,
             self.__id_col
         self.__index_constitutes_pricing: holds the index constitutes for the pricing in a MultiIndex of date,
             self.__id_col
         """
         self.__id_col = id_col
+        self.__date_type = date_type
         self.__index_constitutes_factor: Optional[pd.MultiIndex] = None
         self.__index_constitutes_pricing: Optional[pd.MultiIndex] = None
 
-    def add_index_info(self, index_constitutes: pd.DataFrame, start_date: pd.Timestamp = None,
-                       end_date: pd.Timestamp = None, date_format: str = '') -> None:
+    def add_index_info(self, index_constitutes: pd.DataFrame, start_date: Union[pd.Timestamp, str] = None,
+                       end_date: Union[pd.Timestamp, str] = None, date_format: str = '') -> None:
         """
         adds constitute data to the ConstituteAdjustment object.
         creates and stores a pandas multiIndex index with (date, self.__id_col)
@@ -47,14 +51,10 @@ class ConstituteAdjustment:
         :param start_date: The first date we want to get data for, needs to have tz of UTC
         :param end_date: The last first date we want to get data for, needs to have tz of UTC
         :param date_format: if fromCol AND thruCol are both strings then the format to parse them in to dates
-        :param id_col: the asset identfier column
         :return: None
         """
         # making sure date and self.__id_col are in the columns
-        _check_columns([self.__id_col, 'from', 'thru'], index_constitutes.columns)
-
-        # setting a copy of indexConstitutes so we dont mutate anything
-        index_constitutes: pd.DataFrame = index_constitutes[[self.__id_col, 'from', 'thru']].copy()
+        index_constitutes = _check_columns([self.__id_col, 'from', 'thru'], index_constitutes)
 
         # will throw an error if there sre duplicate self.__id_col
         handle_duplicates(df=index_constitutes[[self.__id_col]], out_type='ValueError', name='The column symbols',
@@ -116,36 +116,67 @@ class ConstituteAdjustment:
         :param date_format: the format of the date column if the date column is a string.
         :return: a indexed data frame adjusted for index constitutes
         """
-
         # if the add_index_info is not defined then throw error
         if self.__index_constitutes_pricing is None:
             raise ValueError('Index constitutes are not set')
 
         # making sure date and self.__id_col are in the columns
-        _check_columns(['date', self.__id_col], data.columns)
+        data = _check_columns(['date', self.__id_col], data, False)
 
-        # setting a copy of data so we dont mutate anything
-        data: pd.DataFrame = data.copy()
         # dropping duplicates and throwing a warning if there are any
         data = handle_duplicates(df=data, out_type='Warning', name='Data', drop=True)
 
         # seeing if we have to convert from and thru to series of timestamps
         if date_format != '':
             try:
-                data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_localize('UTC')
+                data['date'] = pd.to_datetime(data['date'], format=date_format)  # .dt.tz_localize('UTC')
             except TypeError:
-                data['date'] = pd.to_datetime(data['date'], format=date_format).dt.tz_convert('UTC')
-
-        data.set_index(['date', self.__id_col], inplace=True)
+                data['date'] = pd.to_datetime(data['date'], format=date_format)  # .dt.tz_convert('UTC')
 
         # join is about 40% faster then reindexing
         if contents == 'pricing':
-            return self.__index_constitutes_pricing.to_frame().join(data).drop(['date', self.__id_col], axis=1)
+            return self.fast_reindex(self.__index_constitutes_pricing, data)
         if contents == 'factor':
-            return self.__index_constitutes_factor.to_frame().join(data).drop(['date', self.__id_col], axis=1)
+            return self.fast_reindex(self.__index_constitutes_factor, data)
         else:
             raise ValueError(
                 f'Representation {contents} is not recognised. Valid arguments are "pricing", "factor"')
+
+    def fast_reindex(self, reindex_by: pd.MultiIndex, frame_to_reindex: pd.DataFrame):
+        """
+        Quickly reindex a pandas dataframe using a join in duckdb
+        pandas reindex struggles with efficiently reindexing timestamps this is meant to be a work around to that issue
+        """
+        reindex_by = reindex_by.to_frame()
+        id_cols = f'reindex_by.date, reindex_by.{self.__id_col}'
+        factor_cols = ', '.join([col for col in frame_to_reindex.columns if col not in ['date', self.__id_col]])
+
+        query = duckdb.query(f"""
+                    SELECT {id_cols}, {factor_cols}
+                        FROM reindex_by 
+                            left join frame_to_reindex on (reindex_by.date = frame_to_reindex.date) 
+                                                    and (reindex_by.{self.__id_col} = frame_to_reindex.{self.__id_col});
+                    """)
+
+        return self._set_tz(query.to_df()).set_index(['date', self.__id_col])
+
+    def _set_tz(self, df: pd.DataFrame):
+        """
+        adjusts the date column according to the self.__date_type
+        :param df: the Dataframe which we are adjusting the 'date column' for
+        :return: df with date columns adjusted
+        """
+        if self.__date_type == 'timestamp':
+            try:
+                df['date'] = df['date'].dt.tz_localize('UTC')
+            except TypeError:
+                df['date'] = df['date'].dt.tz_convert('UTC')
+        elif self.__date_type == 'period':
+            df['date'] = df['date'].dt.to_period('D')
+        else:
+            raise ValueError(f'{self.__date_type} is not recognised')
+
+        return df
 
     @property
     def factor_components(self) -> Optional[pd.MultiIndex]:
@@ -162,13 +193,23 @@ class ConstituteAdjustment:
         return self.__index_constitutes_pricing
 
 
-def _check_columns(needed: List[str], given_cols: pd.Index) -> None:
+def _check_columns(needed: List[str], df: pd.DataFrame, index_columns: bool = True) -> pd.DataFrame:
     """
     helper to check if the required columns are present
     raises value error if a col in needed is not in givenCols
     :param needed: list of needed columns
-    :param given_cols: df.columns of the given data
+    :param df: df of the factor data for the given data
+    :param index_columns: should we index the columns specified in needed when returning the df
+    :return: Given dataframe with the correct columns and range index
     """
+    if not isinstance(df.index, pd.core.indexes.range.RangeIndex):
+        df = df.reset_index()
+
     for col in needed:
-        if col not in given_cols:
+        if col not in df.columns:
             raise ValueError(f'Required column \"{col}\" is not present')
+
+    if index_columns:
+        return df[needed].copy()
+
+    return df.copy()

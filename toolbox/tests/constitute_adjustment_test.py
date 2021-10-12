@@ -138,7 +138,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         self.examples()
         filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
                                                       contents='factor')
-        self.assertTrue(self.adjusted_foo.equals(filtered))
+        self.assertTrue(self.adjusted_foo.sort_index().equals(filtered.sort_index()))
 
     def test_pad_adjust_data_for_membership(self):
         """
@@ -148,7 +148,7 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
                                                       contents='pricing')
 
-        self.assertTrue(self.adjusted_pricing.equals(filtered))
+        self.assertTrue(self.adjusted_pricing.sort_index().equals(filtered.sort_index()))
 
     def test_throw_error_adjust_data_for_membership(self):
         """

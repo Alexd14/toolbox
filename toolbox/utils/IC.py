@@ -13,4 +13,4 @@ def calculate_ic(y_true: np.array, y_pred: np.array) -> float:
     :param y_pred: the predicted value of the target
     :return: the information coefficient of the y_pred
     """
-    return np.corrcoef(y_true.argsort().argsort(), y_pred.argsort().argsort())[0][1]
+    return np.corrcoef(y_true, y_pred)[0][1]
