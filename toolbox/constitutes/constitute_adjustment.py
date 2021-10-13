@@ -6,7 +6,6 @@ import pandas_market_calendars as mcal
 
 from toolbox.utils.handle_data import handle_duplicates
 
-
 class ConstituteAdjustment:
     """
     provides the functionality of correctly identifying on what day which asset should be in/not in the data set based
@@ -56,9 +55,9 @@ class ConstituteAdjustment:
         # making sure date and self.__id_col are in the columns
         index_constitutes = _check_columns([self.__id_col, 'from', 'thru'], index_constitutes)
 
-        # will throw an error if there sre duplicate self.__id_col
-        handle_duplicates(df=index_constitutes[[self.__id_col]], out_type='ValueError', name='The column symbols',
-                          drop=False)
+        # will throw an error if there are duplicate self.__id_col
+        handle_duplicates(df=index_constitutes, out_type='ValueError', name='The column symbols',
+                          drop=False, subset=[self.__id_col])
 
         # seeing if we have to convert from and thru to series of timestamps
         if date_format != '':
@@ -124,7 +123,7 @@ class ConstituteAdjustment:
         data = _check_columns(['date', self.__id_col], data, False)
 
         # dropping duplicates and throwing a warning if there are any
-        data = handle_duplicates(df=data, out_type='Warning', name='Data', drop=True)
+        data = handle_duplicates(df=data, out_type='Warning', name='Data', drop=True, subset=['date', self.__id_col])
 
         # seeing if we have to convert from and thru to series of timestamps
         if date_format != '':
@@ -133,16 +132,15 @@ class ConstituteAdjustment:
             except TypeError:
                 data['date'] = pd.to_datetime(data['date'], format=date_format)  # .dt.tz_convert('UTC')
 
-        # join is about 40% faster then reindexing
         if contents == 'pricing':
-            return self.fast_reindex(self.__index_constitutes_pricing, data)
+            return self._fast_reindex(self.__index_constitutes_pricing, data)
         if contents == 'factor':
-            return self.fast_reindex(self.__index_constitutes_factor, data)
+            return self._fast_reindex(self.__index_constitutes_factor, data)
         else:
             raise ValueError(
                 f'Representation {contents} is not recognised. Valid arguments are "pricing", "factor"')
 
-    def fast_reindex(self, reindex_by: pd.MultiIndex, frame_to_reindex: pd.DataFrame):
+    def _fast_reindex(self, reindex_by: pd.MultiIndex, frame_to_reindex: pd.DataFrame):
         """
         Quickly reindex a pandas dataframe using a join in duckdb
         pandas reindex struggles with efficiently reindexing timestamps this is meant to be a work around to that issue

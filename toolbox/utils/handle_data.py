@@ -1,8 +1,11 @@
-import pandas as pd
+from typing import List
+
 import numpy as np
+import pandas as pd
 
 
-def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = False) -> pd.DataFrame:
+def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = False,
+                      subset: List[any] = None) -> pd.DataFrame:
     """
     Checking to see if there are duplicates in the given data frame
     if there are duplicates outType will be used
@@ -13,10 +16,12 @@ def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = F
     :param drop: boolean to drop the duplicates or not
         if False no data frame will be returned and vice verse
         this param will not matter if outType is a ValueError
+    :param subset: subset of df columns we should check duplicates for
     :return: the given df with duplicates dropped according to drop
     """
     # seeing if there are duplicates in the factor
-    dups = df.duplicated()
+    dups = df.duplicated(subset=subset)
+
     if dups.any():
         amount_of_dups = dups.sum()
         out_string = f'{name} is {round(amount_of_dups / len(df), 3)} duplicates, {amount_of_dups} rows\n'
@@ -29,7 +34,7 @@ def handle_duplicates(df: pd.DataFrame, out_type: str, name: str, drop: bool = F
 
         # dropping the duplicates
         if drop:
-            return df[~df.index.duplicated(keep='first')]
+            return df.drop_duplicates(subset=subset, keep='first')
 
     if drop:
         return df
