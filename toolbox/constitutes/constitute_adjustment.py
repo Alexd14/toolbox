@@ -6,6 +6,7 @@ import pandas_market_calendars as mcal
 
 from toolbox.utils.handle_data import handle_duplicates
 
+
 class ConstituteAdjustment:
     """
     provides the functionality of correctly identifying on what day which asset should be in/not in the data set based
@@ -23,7 +24,11 @@ class ConstituteAdjustment:
             self.__id_col
         """
         self.__id_col = id_col
+
+        if date_type not in ['period', 'timestamp']:
+            raise ValueError(f'{date_type} is not recognised')
         self.__date_type = date_type
+
         self.__index_constitutes_factor: Optional[pd.MultiIndex] = None
         self.__index_constitutes_pricing: Optional[pd.MultiIndex] = None
 
@@ -127,10 +132,7 @@ class ConstituteAdjustment:
 
         # seeing if we have to convert from and thru to series of timestamps
         if date_format != '':
-            try:
-                data['date'] = pd.to_datetime(data['date'], format=date_format)  # .dt.tz_localize('UTC')
-            except TypeError:
-                data['date'] = pd.to_datetime(data['date'], format=date_format)  # .dt.tz_convert('UTC')
+            data['date'] = pd.to_datetime(data['date'], format=date_format)
 
         if contents == 'pricing':
             return self._fast_reindex(self.__index_constitutes_pricing, data)
@@ -144,6 +146,9 @@ class ConstituteAdjustment:
         """
         Quickly reindex a pandas dataframe using a join in duckdb
         pandas reindex struggles with efficiently reindexing timestamps this is meant to be a work around to that issue
+        :param reindex_by: desired pandas multi index
+        :param frame_to_reindex: frame we are reindexing data from
+        :return: reindexed dataframe
         """
         reindex_by = reindex_by.to_frame()
         id_cols = f'reindex_by.date, reindex_by.{self.__id_col}'
@@ -165,10 +170,7 @@ class ConstituteAdjustment:
         :return: df with date columns adjusted
         """
         if self.__date_type == 'timestamp':
-            try:
-                df['date'] = df['date'].dt.tz_localize('UTC')
-            except TypeError:
-                df['date'] = df['date'].dt.tz_convert('UTC')
+            df['date'] = df['date'].dt.tz_localize('UTC')
         elif self.__date_type == 'period':
             df['date'] = df['date'].dt.to_period('D')
         else:
