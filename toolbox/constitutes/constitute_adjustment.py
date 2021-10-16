@@ -127,6 +127,11 @@ class ConstituteAdjustment:
         # making sure date and self.__id_col are in the columns
         data = _check_columns(['date', self.__id_col], data, False)
 
+        # ensuring there is not a period in the date column
+        if isinstance(data['date'].dtype, pd.core.dtypes.dtypes.PeriodDtype):
+            data['date'] = data['date'].dt.to_timestamp()
+            date_format = ''
+
         # dropping duplicates and throwing a warning if there are any
         data = handle_duplicates(df=data, out_type='Warning', name='Data', drop=True, subset=['date', self.__id_col])
 
@@ -135,12 +140,18 @@ class ConstituteAdjustment:
             data['date'] = pd.to_datetime(data['date'], format=date_format)
 
         if contents == 'pricing':
-            return self._fast_reindex(self.__index_constitutes_pricing, data)
-        if contents == 'factor':
-            return self._fast_reindex(self.__index_constitutes_factor, data)
+            reindex_frame = self._fast_reindex(self.__index_constitutes_pricing, data)
+        elif contents == 'factor':
+            reindex_frame = self._fast_reindex(self.__index_constitutes_factor, data)
         else:
             raise ValueError(
                 f'Representation {contents} is not recognised. Valid arguments are "pricing", "factor"')
+
+        # if we have dataframe with 1 column then return series
+        if reindex_frame.shape[1] == 1:
+            return reindex_frame.iloc[:, 0]
+
+        return reindex_frame
 
     def _fast_reindex(self, reindex_by: pd.MultiIndex, frame_to_reindex: pd.DataFrame):
         """
