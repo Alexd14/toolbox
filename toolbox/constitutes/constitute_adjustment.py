@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 import pandas_market_calendars as mcal
 
+from toolbox.db.read.query_constructor import QueryConstructor
 from toolbox.utils.handle_data import handle_duplicates
 
 
@@ -97,6 +98,19 @@ class ConstituteAdjustment:
         self.__index_constitutes_factor = pd.concat(indexes_factor).index.set_names(['date', self.__id_col])
         self.__index_constitutes_pricing = pd.concat(indexes_pricing).index.set_names(['date', self.__id_col])
 
+    def add_index_info_from_db(self, universe_table: str, start_date: str, end_date: str) -> None:
+        """
+        Same as add_index_info but takes in index info from the database,
+        only sets index information for factors, self.__index_constitutes_factor
+        :param universe_table: the table to query the db for
+        :param start_date: The first date we want to get data for string in %Y-%m-%d
+        :param end_date: The last first date we want to get data for string in %Y-%m-%d
+        :return: None
+        """
+        raw_uni = QueryConstructor().query_universe_table(universe_table, [self.__id_col], start_date, end_date,
+                                                          index=['date', self.__id_col]).set_freq(None).df
+        self.__index_constitutes_factor = raw_uni.index
+
     def adjust_data_for_membership(self, data: pd.DataFrame, contents: str, date_format: str = '') -> pd.DataFrame:
         """
         adjusts the data set accounting for when assets are a member of the index defined in add_index_info.
@@ -121,7 +135,7 @@ class ConstituteAdjustment:
         :return: a indexed data frame adjusted for index constitutes
         """
         # if the add_index_info is not defined then throw error
-        if self.__index_constitutes_pricing is None:
+        if self.__index_constitutes_factor is None:
             raise ValueError('Index constitutes are not set')
 
         # making sure date and self.__id_col are in the columns
@@ -221,6 +235,6 @@ def _check_columns(needed: List[str], df: pd.DataFrame, index_columns: bool = Tr
             raise ValueError(f'Required column \"{col}\" is not present')
 
     if index_columns:
-        return df[needed].copy()
+        return df[needed]
 
-    return df.copy()
+    return df
