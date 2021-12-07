@@ -7,7 +7,7 @@ from toolbox.db.settings import DB_CONNECTION_STRING
 
 class SQLConnection:
     """
-    Provides a connection to a duckdb database
+    Provides a lazy connection to a duckdb database
     """
 
     def __init__(self, connection_string: Optional[str] = None, read_only: bool = True) -> None:
@@ -19,7 +19,7 @@ class SQLConnection:
         self._read_only: bool = read_only
 
         self._connection_string: str = self._get_connection_string(connection_string)
-        self._db_connection: duckdb.DuckDBPyConnection = self._get_db_connection()
+        self._db_connection: Optional[duckdb.DuckDBPyConnection] = None
 
     @staticmethod
     def _get_connection_string(connection_string: Optional[str]) -> str:
@@ -37,21 +37,24 @@ class SQLConnection:
 
         return connection_string
 
-    def _get_db_connection(self) -> duckdb.DuckDBPyConnection:
+    def _get_db_connection(self) -> None:
         """
-        gets connection to duckdb database, if connection is currently open then it will close connection
-        :return: connection to the duckdb database
+        sets connection to duckdb database, if connection is currently open then it will close connection
+        :return: None
         """
-        if hasattr(self, '_db_connection') and self._db_connection:
+        if self._db_connection:
             self._db_connection.close()
 
-        return duckdb.connect(database=self._connection_string, read_only=self._read_only)
+        self._db_connection = duckdb.connect(database=self._connection_string, read_only=self._read_only)
 
     @property
     def con(self) -> duckdb.DuckDBPyConnection:
         """
         :return: connection to duckdb database
         """
+        if self._db_connection is None:
+            self._get_db_connection()
+
         return self._db_connection
 
     @property
@@ -71,13 +74,18 @@ class SQLConnection:
         """
         if read_only != self.read_only:
             self._read_only = read_only
-            self._connection_string = self._get_db_connection()
+
+            if self._db_connection:
+                self._db_connection.close()
+                self._connection_string = None
 
     def close(self) -> None:
         """
         will close the sql connection
         """
-        self._db_connection.close()
+        if self._db_connection:
+            self._db_connection.close()
+            self._db_connection = None
 
     def execute(self, sql: str, **kwargs) -> duckdb.DuckDBPyConnection:
         """
@@ -85,11 +93,11 @@ class SQLConnection:
         :param sql: query to run
         :return: raw duckdb object containing the results of the query
         """
-        return self._db_connection.execute(sql, **kwargs)
+        return self.con.execute(sql, **kwargs)
 
     def set_threads(self, num_threads: int) -> None:
         """
         sets the amount of threads duck db should use
         :return: None
         """
-        self._db_connection.execute(f'PRAGMA threads={num_threads};')
+        self.con.execute(f'PRAGMA threads={num_threads};')
