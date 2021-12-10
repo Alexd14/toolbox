@@ -375,6 +375,12 @@ class QueryConstructor:
                                                                               True)
         return self
 
+    def where(self, where_condition: str):
+        """
+        adds a condition to the sql to the where cause string
+        """
+        self._query_string['where'] += f"""{' AND ' if self._query_string['where'] else ''} {where_condition}"""
+
     def _clear_query_string(self, keep: List[str]) -> None:
         """
         clears all fields in self._query_string except for the fields passed to keep
@@ -453,5 +459,4 @@ class QueryConstructor:
 
         return ', '.join(set(columns_to_select))
 
-# clean up _create_columns_to_select_sql
 # handle lagging all columns by x
