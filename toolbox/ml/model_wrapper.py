@@ -60,8 +60,9 @@ class ModelWrapper(ABC):
         :param predict: The data to make predictions on
         :return: a Tuple of pandas Series with the predictions and a float what s the
         """
-        if not train_features.index.equals(train_target.index):
-            raise ValueError('The index for the features and target is different')
+        # checks the index but is very slow
+        # if not train_features.index.equals(train_target.index):
+        #     raise ValueError('The index for the features and target is different')
 
         # allowing the user to adjust the data before fitting, assuming that the user does not mess up the indexes
         transformed_features, transformedPredict = self.transform_data(train_features, train_target, predict)
