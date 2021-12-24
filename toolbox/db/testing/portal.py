@@ -3,7 +3,6 @@ from typing import List, Union
 
 import pandas as pd
 import numpy as np
-import pandas_market_calendars as mcal
 from ntiles.portals.base_portal import BaseDeltaPortal
 
 from toolbox.db.read.query_constructor import QueryConstructor

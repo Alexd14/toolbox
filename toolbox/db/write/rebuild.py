@@ -48,11 +48,34 @@ def rebuild_db(drop: bool = False):
         },
 
         {
-            'table': 'stock_header',
+            'table': 'stock_header_info',
             'schema': 'crsp',
             'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Security Files/Stock Header Info/2xzpc1ww0dih4jk0.csv',
+            'custom': """
+                        UPDATE crsp.stock_header_info SET begvol=NULL WHERE begvol = 'Z';
+                        UPDATE crsp.stock_header_info SET endvol=NULL WHERE endvol = 'Z';
+                       """,
+            'alter_type': {'begdat': ['timestamp', '%Y%m%d'],
+                           'enddat': ['timestamp', '%Y%m%d'],
+                           'begprc': ['timestamp', '%Y%m%d'],
+                           'endprc': ['timestamp', '%Y%m%d'],
+                           'begvol': ['timestamp', '%Y%m%d'],
+                           'endvol': ['timestamp', '%Y%m%d'],
+                           'begret': ['timestamp', '%Y%m%d'],
+                           'endret': ['timestamp', '%Y%m%d']},
             'rename': {},
             'index': [{'name': 'crsp_sh_permno_idx', 'column': 'permno'}]
+        },
+        {
+            'table': 'distributions',
+            'schema': 'crsp',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Events/Distribution/y0vypfj8geyzhs0l.csv',
+            'alter_type': {'dclrdt': ['timestamp', '%Y%m%d'],
+                           'rcrddt': ['timestamp', '%Y%m%d'],
+                           'paydt': ['timestamp', '%Y%m%d'],
+                           'exdt': ['timestamp', '%Y%m%d']},
+            'rename': {},
+            'index': [{'name': 'crsp_dist_permno_idx', 'column': 'permno'}]
         },
 
         #
@@ -97,19 +120,87 @@ def rebuild_db(drop: bool = False):
                       {'name': 'cstat_sd_iid_idx', 'column': 'iid'},
                       {'name': 'cstat_sd_id_idx', 'column': 'id'}]
         },
+
+        #
+        # WRDS Financial Ratios
+        #
+
+        {
+            'rows_to_interpret': 50_000,
+            'schema': 'wrds',
+            'table': 'firm_ratios',
+            'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20210102.gz',
+            'rename': {'public_date': 'date'},
+            'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
+                           'edate': ['timestamp', '%Y%m%d']},
+            'index':
+                [{'name': 'wrds_firm_date_idx', 'column': 'date'},
+                 {'name': 'wrds_firm_permno_idx', 'column': 'permno'},
+                 {'name': 'wrds_firm_gvkey_idx', 'column': 'gvkey'}]
+        },
+
+        #
+        # IBES
+        #
+
+        {
+            'rows_to_interpret': 100,
+            'schema': 'ibes',
+            'table': 'crsp_ibes_link',
+            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES CRSP Link/luhmjdovofexjxwg.csv',
+            'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
+                           'edate': ['timestamp', '%Y%m%d']},
+            'index':
+                [{'name': 'crsp_ibes_permno_idx', 'column': 'permno'},
+                 {'name': 'crsp_ibes_ticker_idx', 'column': 'ticker'},
+                 {'name': 'crsp_ibes_sdate_idx', 'column': 'sdate'},
+                 {'name': 'crsp_ibes_edate_idx', 'column': 'edate'}]
+        },
+
+        {
+            'rows_to_interpret': 5000,
+            'table': 'summary_price_target',
+            'schema': 'ibes',
+            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Price Target/lyrvpqbb4tg2lbv0.csv',
+            'rename': {'STATPERS': 'date'},
+            'alter_type': {'DATE': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'ibes_spt_date_idx', 'column': 'date'},
+                      {'name': 'ibes_spt_ticker_idx', 'column': 'ticker'},
+                      {'name': 'ibes_spt_usfirm_idx', 'column': 'usfirm'},
+                      {'name': 'ibes_spt_curr_idx', 'column': 'curr'}]
+        },
+        {
+            'rows_to_interpret': 50000,
+            'table': 'summary_statistics',
+            'schema': 'ibes',
+            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Summary Statistics/1fhrqwpqzncqbdp3.csv',
+            'rename': {'STATPERS': 'date'},
+            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+                           'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
+                           'FPEDATS': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
+                      {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
+                      {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
+                      {'name': 'ibes_ss_currcode_idx', 'column': 'curcode'},
+                      {'name': 'ibes_ss_measure_idx', 'column': 'measure'}]
+        }
     ]
 
     # building the tables
     IngestDataBase().ingest(tbls, drop, rows_to_interpret=2000)
 
     # building crsp universes
+    crsp_us_universe(max_rank=100)
     crsp_us_universe(max_rank=500)
+    crsp_us_universe(max_rank=750)
     crsp_us_universe(max_rank=1000)
     crsp_us_universe(max_rank=3000)
     crsp_us_universe(min_rank=1000, max_rank=3000)
 
     # building compustat universes
+    compustat_us_universe(max_rank=100)
     compustat_us_universe(max_rank=500)
+    compustat_us_universe(max_rank=750)
     compustat_us_universe(max_rank=1000)
     compustat_us_universe(max_rank=3000)
     compustat_us_universe(min_rank=1000, max_rank=3000)

@@ -1,12 +1,18 @@
-from typing import List, Optional, Union, Dict
+from typing import Iterable, List, Optional, Tuple, Union, Dict
 
 import re
-import sqlparse
+import hashlib
 import pandas as pd
 import pandas_market_calendars as mcal
 
 from toolbox.db.api.sql_connection import SQLConnection
 from toolbox.db.settings import DB_ADJUSTOR_FIELDS
+
+# try to import sqlparse, but not required
+try:
+    import sqlparse
+except ImportError as e:
+    pass
 
 
 class QueryConstructor:
@@ -24,9 +30,12 @@ class QueryConstructor:
         """
         self._con: SQLConnection = sql_con if sql_con else SQLConnection()
 
-        self._query_string = {'select': '', 'from': '', 'where': '', 'group_by': '', 'window': ''}
+        self._query_string = {'select': '', 'from': '', 'where': '', 'group_by': '', 'window': '', 'order_by': ''}
         self._df_options = {'freq': freq, 'index': []}
         self._query_metadata = {'asset_id': '', 'fields': []}
+
+        self._asset_table = None
+        self._dict_asset_tables = {}
 
     @property
     def raw_sql(self) -> str:
@@ -36,6 +45,7 @@ class QueryConstructor:
         where_clause = 'WHERE ' + self._query_string['where'] if self._query_string['where'] != '' else ''
         group_by_clause = 'GROUP BY ' + self._query_string['group_by'] if self._query_string['group_by'] != '' else ''
         window_clause = 'WINDOW ' + self._query_string['window'] if self._query_string['window'] != '' else ''
+        order_by_clause = 'ORDER BY ' + self._query_string['order_by'] if self._query_string['order_by'] != '' else ''
 
         query_string = f"""
                     SELECT {self._query_string['select']}
@@ -43,6 +53,7 @@ class QueryConstructor:
                     {where_clause}
                     {group_by_clause}
                     {window_clause}
+                    {order_by_clause}
                 """
         return query_string
 
@@ -58,17 +69,26 @@ class QueryConstructor:
         """
         returns the fields(columns) of a query
         """
-        return self._query_metadata['fields'] + [self._query_metadata['asset_id']]
+        return self._query_metadata['fields'] + [
+            self._query_metadata['asset_id']] if self._query_metadata['asset_id'] else []
 
     @property
     def df(self):
         """
         executes the sql query that the user has created
         """
+        self._regester_universe()
         raw_df = self._con.execute(self.raw_sql).fetchdf()
         self._con.close()
 
         return self._make_df_changes(raw_df)
+
+    @property
+    def asset_tables(self) -> Dict[str, Union[str, pd.DataFrame]]:
+        """
+        returns self._dict_asset_tables
+        """
+        return self._dict_asset_tables
 
     def _make_df_changes(self, raw_df):
         """
@@ -82,11 +102,27 @@ class QueryConstructor:
 
         return raw_df
 
+    def _regester_universe(self) -> None:
+        """
+        regesters the tables in self._dict_asset_tables
+        :return: None
+        """
+        if not self._dict_asset_tables:
+            return
+
+        for name, tbl in self._dict_asset_tables.items():
+            if isinstance(tbl, str):
+                self._con.execute(tbl)
+            elif isinstance(tbl, pd.DataFrame):
+                self._con.con.register(name, tbl)
+            else:
+                raise ValueError('Unknown type to regester asset table')
+
     def query_timeseries_table(self, table: str, fields: List[str], assets: Optional[Union[List[any], str]],
                                search_by: str, start_date: str, end_date: str = '3000', adjust: bool = True):
         """
         constructs a query to get timeseries data from the database
-        :param assets: the assets we want to get data for, or a universe table
+        :param assets: the assets we want to get data for, or a universe table, if '*' then will not filter assets
         :param search_by: the identifier we are searching by
         :param fields: the fields we are getting in our query
         :param table: the table we are searching must be prefixed by the schema
@@ -96,11 +132,14 @@ class QueryConstructor:
         :return: Pandas Dataframe Columns: fields; Index: ('date', search_by)
         """
 
-        self._query_string['select'] = self._create_columns_to_select_sql(table, search_by, fields, adjust)
+        self._query_string['select'] = self._create_columns_to_select_sql(table=table,
+                                                                          fields=fields + ['date', search_by],
+                                                                          adjust=adjust)
 
-        asset_filter_sql = self._create_asset_filter_sql(assets, search_by, start_date, end_date)
-        self._query_string['from'] = f"""{table} AS data JOIN {asset_filter_sql} AS uni
-                                            ON data.{search_by} = uni.{search_by}"""
+        self._create_asset_filter_sql(assets=assets, search_by=search_by, start_date=start_date,
+                                      end_date=end_date, timeseries_table=table)
+        self._query_string['from'] = f"""{table} AS data JOIN {self._asset_table} AS uni 
+                                        ON uni.{search_by} = data.{search_by}"""
 
         self._query_string['where'] = f"""data.date >= '{start_date}' AND data.date <= '{end_date}'"""
 
@@ -124,12 +163,14 @@ class QueryConstructor:
         :param end_date: the last date to get data on in '%Y-%m-%d' format, defaults to 3000
         :return: Pandas Dataframe Columns: fields; Index: 'date', search_by
         """
-        select_col_sql = self._create_columns_to_select_sql(table, search_by, fields, False, False)
-        asset_filter_sql = self._create_asset_filter_sql(assets, search_by, start_date, end_date)
+        select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + ['date', search_by],
+                                                            adjust=False)
+        self._create_asset_filter_sql(assets=assets, search_by=search_by, start_date=start_date,
+                                      end_date=end_date, timeseries_table=table)
 
         self._query_string['select'] = f"""{select_col_sql}, min(data.date) AS min_date, max(data.date) AS max_data"""
-        self._query_string['from'] = f"""{table} AS data JOIN {asset_filter_sql} AS uni
-                                            ON data.{search_by} = uni.{search_by}"""
+        self._query_string['from'] = f"""{table} AS data {self._asset_table} AS uni 
+                                        ON uni.{search_by} = data.{search_by}"""
         self._query_string['where'] = f"""data.date >= '{start_date}' AND data.date <= '{end_date}'"""
         self._query_string['group_by'] = select_col_sql
 
@@ -141,7 +182,7 @@ class QueryConstructor:
         return self
 
     def query_universe_table(self, table: str, fields: List[str], start_date: str, end_date: str,
-                             index: List[str] = None):
+                             index: List[str] = None, keep_date_col: bool = True):
         """
         makes sql query for a timeseries of a universe table
         :param table: the universe table to query
@@ -151,8 +192,12 @@ class QueryConstructor:
         :param index: what should the index of the returned frame be
         :return: Pandas Dataframe Columns: fields; Index: 'date', fields
         """
-        select_col_sql = self._create_columns_to_select_sql(table=table, search_by='date', fields=fields, adjust=False,
-                                                            use_date=False).replace('data.', '')
+        query_fields = fields
+        if keep_date_col:
+            query_fields += ['date']
+
+        select_col_sql = self._create_columns_to_select_sql(table=table, fields=query_fields, adjust=False,
+                                                            tbl_alias='')
         self._query_string['select'] = select_col_sql
         self._query_string['from'] = f"""universe.{table}"""
         self._query_string['where'] = f"""date >= '{start_date}' AND date <= '{end_date}'"""
@@ -185,10 +230,7 @@ class QueryConstructor:
         :param keep_old: should we keep the old NULL columns?
         """
         # getting the first and last date of data in the query
-        searching = self._query_string['where'] + ' ' + self._query_string['from']
-        start_date = re.compile("data\.date >= ([^\s]+)").search(searching).group(1).replace('\'', '')
-        end_date = re.compile("data\.date <= ([^\s]+)").search(searching).group(1).replace('\'', '')
-        is_tmp_tbl = 'temp.' if re.compile(r'ba[rzd]').search(self._query_string['from']) else ''
+        start_date, end_date = self._get_start_end_date()
 
         asset_id = self._query_metadata['asset_id']
 
@@ -198,18 +240,19 @@ class QueryConstructor:
                 calendar).valid_days(start_date=start_date, end_date=end_date).to_series().to_frame('date')
             full_date_id_sql = f"""(
                                     SELECT {asset_id}, date
-                                    FROM {is_tmp_tbl}asset_tbl as assets
-                                    CROSS JOIN trading_cal
+                                    FROM {self._asset_table} as assets
+                                    CROSS JOIN trading_cal_{calendar}
                                     ) as cal
                                 """
 
             # registering the trading calander
-            self._con.con.register('trading_cal', trading_cal)
+            self._dict_asset_tables[f'trading_cal_{calendar}'] = trading_cal
+            # self._con.con.register('trading_cal', trading_cal)
         else:
             make_full_date = lambda x: pd.Timestamp(x).strftime('%Y-%m-%d')
             full_date_id_sql = f"""(
                                     SELECT {asset_id}, range as date
-                                        FROM {is_tmp_tbl}asset_tbl as assets
+                                        FROM {self._asset_table} as assets
                                         CROSS JOIN 
                                             (
                                             SELECT * 
@@ -219,11 +262,12 @@ class QueryConstructor:
                                     ) as cal
                                 """
 
-        wanted_outer_cols = self._create_columns_to_select_sql('', self._query_metadata['asset_id'],
-                                                               self._query_metadata['fields'], False, True)
+        wanted_outer_cols = self._create_columns_to_select_sql(
+            fields=self._query_metadata['fields'] + ['date', self._query_metadata['asset_id']], adjust=False)
 
-        wanted_inner_cols = self._create_columns_to_select_sql('', '', self._query_metadata['fields'], False, False)
-        wanted_inner_cols = re.sub('data\.,|, data\.$', '', wanted_inner_cols)
+        wanted_inner_cols = self._create_columns_to_select_sql(
+            fields=self._query_metadata['fields'] + [self._query_metadata['asset_id']], adjust=False)
+        # wanted_inner_cols = re.sub('data\.,|, data\.$', '', wanted_inner_cols)
 
         old_col_outter = f', old_date, old_{asset_id}' if keep_old else ''
         old_col_inner = f', data.date as old_date, data.{asset_id} as old_{asset_id}' if keep_old else ''
@@ -251,31 +295,30 @@ class QueryConstructor:
         # forward fill the data
         # if calendar then reindex for the calander
         self.set_calendar('full', keep_old=True)
-        self.forward_fill(fill_limit)
+        self._forward_fill(fill_limit)
         self.set_calendar(calendar)
 
         return self
 
-    def forward_fill(self, fill_limit: Optional[int] = None):
+    def _forward_fill(self, fill_limit: Optional[int] = None):
         """
         forward fills every column in a table
         :param fill_limit: max amount of fills in a row, CURRENTLY NOT WORKING
         """
         asset_id = self._query_metadata['asset_id']
-        wanted_outer_cols = self._create_columns_to_select_sql('', self._query_metadata['asset_id'],
-                                                               self._query_metadata['fields'], False, True)
-        self._query_string['from'] = f"""(SELECT {wanted_outer_cols},
-                                        COUNT(data.old_{asset_id}) OVER (PARTITION BY data.{asset_id} 
-                                        ORDER BY data.date) as grouper
-                                        FROM
-                                        ({self.raw_sql}) AS data) AS data"""
+
+        self._query_string['select'] += f""", COUNT(CASE WHEN data.old_{asset_id} IS NOT NULL THEN 1 END) 
+                                            OVER (ORDER BY data.{asset_id}, "date" ROWS BETWEEN UNBOUNDED PRECEDING 
+                                            AND CURRENT ROW) AS grouper """
+
+        self.nest()
 
         row_num = ''
         if fill_limit:
             row_num = f""", row_number() OVER (PARTITION BY grouper, {self._query_metadata['asset_id']} 
                     ORDER BY date) as row_num"""
 
-        query_str = ', '.join([f"MAX({col}) OVER ffill as {col}" for col in self._query_metadata['fields']])
+        query_str = ', '.join([f"MIN({col}) OVER ffill as {col}" for col in self._query_metadata['fields']])
         self._query_string['select'] = f"""data.date, data.{asset_id}, {query_str} {row_num}"""
         self._query_string['window'] = f"""ffill AS (PARTITION BY {asset_id}, grouper)"""
 
@@ -283,8 +326,8 @@ class QueryConstructor:
 
         if fill_limit:
             self._query_string['from'] = f"""({self.raw_sql}) as data"""
-            self._query_string['select'] = self._create_columns_to_select_sql('', self._query_metadata['asset_id'],
-                                                                              self._query_metadata['fields'], False)
+            self._query_string['select'] = self._create_columns_to_select_sql(
+                fields=self._query_metadata['fields'] + [self._query_metadata['asset_id'], 'date'], adjust=False)
             self._query_string['where'] = f"""row_num <= {fill_limit}"""
             self._clear_query_string(['from', 'select', 'where'])
 
@@ -306,15 +349,15 @@ class QueryConstructor:
             self._query_string['from'] = f"""({self.raw_sql}) as data"""
             self._clear_query_string(['from'])
 
-            wanted_cols = self._create_columns_to_select_sql('', self._query_metadata['asset_id'],
-                                                             self._query_metadata['fields'], False, True)
+            wanted_cols = self._create_columns_to_select_sql(
+                fields=self._query_metadata['fields'] + [self._query_metadata['asset_id']], adjust=False)
             self._query_string['select'] = wanted_cols
             self._query_string['window'] = f"""lag_window AS (PARTITION BY {self._query_metadata['asset_id']} 
                                                     ORDER BY data.date)"""
 
         if qs['window'] == '':
             self._query_string['window'] = f"""lag_window AS (PARTITION BY {self._query_metadata['asset_id']} 
-                                                                ORDER BY data.date)"""
+                                                                ORDER BY data.date ASC)"""
 
         self._query_string['select'] += f""", lag({column}, {days}, NULL) OVER lag_window AS {new_name} """
 
@@ -338,17 +381,17 @@ class QueryConstructor:
         if nest:
             self.nest()
 
-        self._query_string['from'] += f"""{join_type} JOIN ({to_join}) AS {tbl_name} ON {on_str}"""
+        self._query_string['from'] += f""" {join_type} JOIN ({to_join}) AS {tbl_name} ON {on_str} """
 
-        self._query_string['select'] += ', ' + ', '.join(
-            [f'{x} AS {x}_{tbl_name}' if x in self._query_metadata['fields'] else x for x in other.fields if
-             x not in self._query_metadata['asset_id']])
+        fields_to_add = list(set(other.fields) - set(self._query_metadata['fields']))
 
-        # adding others fields to this current query, if names overlap then
-        new_fields = [f'{x}_{tbl_name}' if x in self._query_metadata['fields'] else x for x in other.fields if
-                      x not in self._query_metadata['asset_id']]
+        if len(fields_to_add) > 0:
+            self._query_string['select'] += ', ' + self._create_columns_to_select_sql(fields=other.fields, adjust=False,
+                                                                                      tbl_alias=tbl_name)
 
-        self._query_metadata['fields'] += new_fields
+        self._query_metadata['fields'] += fields_to_add
+        self._dict_asset_tables = {**self._dict_asset_tables, **other.asset_tables}
+        self.nest()
 
         return self
 
@@ -366,13 +409,12 @@ class QueryConstructor:
         and will name the table data
         :param rewrite_select: should we make the default select statement or leave the select statement blank?
         """
-        self._query_string['from'] = f"""({self.raw_sql}) AS data """
+        self._query_string['from'] = f""" ({self.raw_sql}) AS data """
         self._clear_query_string(['from'])
 
         if rewrite_select:
-            self._query_string['select'] = self._create_columns_to_select_sql('', self._query_metadata['asset_id'],
-                                                                              self._query_metadata['fields'], False,
-                                                                              True)
+            self._query_string['select'] = self._create_columns_to_select_sql(
+                fields=self._query_metadata['fields'] + [self._query_metadata['asset_id'], 'date'], adjust=False)
         return self
 
     def where(self, where_condition: str):
@@ -380,83 +422,190 @@ class QueryConstructor:
         adds a condition to the sql to the where cause string
         """
         self._query_string['where'] += f"""{' AND ' if self._query_string['where'] else ''} {where_condition}"""
+        return self
 
-    def _clear_query_string(self, keep: List[str]) -> None:
+    def shift_all(self):
+        """
+        shifts all columns in a query
+        """
+
+    def order_by(self, column: str, way: str = 'ASC'):
+        """
+        ordering the query by a column
+        :param column: columns to order by
+        :param way: the keyword to order by
+        """
+        self._query_string['order_by'] = f""" {column} {way} """
+        return self
+
+    def add_linker_table(self, link_table: str, join_on: Dict[str, str], link_columns: List[str],
+                         link_start_col: str = None, link_end_col: str = None):
+        """
+        joins a linker table onto the current query
+        :param link_table:the table containing the linking information
+        :param join_on: dict of the columns to join {timeseries_tbl_col : link_col}
+        :param link_columns: the columns to get from the linking table
+        :param link_start_col: the startdate of the link
+        :param link_end_col: the end date of the link
+        """
+        columns_linker = self._create_columns_to_select_sql(fields=set(link_columns + list(join_on.values())),
+                                                            adjust=False, tbl_alias='link')
+
+        on_clause = ' '.join([f'data.{main} = link.{link}' for main, link in join_on.items()])
+
+        self._query_string['select'] += ', ' + columns_linker
+        self._query_string['from'] += f""" JOIN {link_table} AS link ON {on_clause} """
+
+        if link_start_col and link_end_col:
+            self.where(f"""data.date > link.{link_start_col} AND data.date < link.{link_end_col}""")
+
+        self._query_metadata['fields'] += link_columns
+
+        return self
+
+    def reset_universe(self, assets: Union[List[any], str], search_by: str = None):
+        """
+        will reset the universe for adding from here on. will not alter old universes
+        is string then will infer the start and end dates from the query
+        :param assets: the assets we want to sent the new universe to. '*' not supported
+        :param search_by: what should the search by be, will be set to the QueryConstructors main identifier
+        :return: self
+        """
+        if search_by:
+            self._query_metadata['fields'].append(self._query_metadata['asset_id'])
+            self._df_options['index'].remove(self._query_metadata['asset_id'])
+            self._df_options['index'].append(search_by)
+            self._query_metadata['asset_id'] = search_by
+
+        start_date, end_date = self._get_start_end_date()
+
+        self._create_asset_filter_sql(assets=assets, search_by=self._query_metadata['asset_id'], start_date=start_date,
+                                      end_date=end_date)
+
+        return self
+
+    def _clear_query_string(self, keep: Iterable[str]) -> None:
         """
         clears all fields in self._query_string except for the fields passed to keep
         """
-        clear = {'select', 'from', 'where', 'group_by', 'window'} - set(keep)
+        clear = {'select', 'from', 'where', 'group_by', 'window', 'order_by'} - set(keep)
         for field in clear:
             self._query_string[field] = ''
 
-    def _create_asset_filter_sql(self, assets: Union[List[Union[int, str]], str], search_by: str, start_date: str,
-                                 end_date: str) -> str:
+    def _get_start_end_date(self) -> Tuple[str, str]:
         """
-        Makes the sql code to filter table by assets
+        returns the start and end query date parsed from the current sql query
+        """
+        searching = self._query_string['where'] + ' ' + self._query_string['from']
+        start_date = re.compile("data\.date >= ([^\s]+)").search(searching).group(1).replace('\'', '')
+        end_date = re.compile("data\.date <= ([^\s]+)").search(searching).group(1).replace('\'', '')
+        return start_date, end_date
+
+    def _create_asset_filter_sql(self, assets: Union[List[Union[int, str]], str], search_by: str, start_date: str,
+                                 end_date: str, timeseries_table: str = None) -> None:
+        """
+        Sets the self._asset_table to the table name of thew table containing the assets
         param assets: the assets we want to get data for, or a universe table
             if not table then will register the passed assets as a view so they can be refrenced by the query
+            if assets == '*' then timeseries_table must be True
         :param search_by: the identifier we are searching assets by
         :param start_date: the first date to get data on in '%Y-%m-%d' format, only used if assets is a universe table
         :param end_date: the last date to get data on in '%Y-%m-%d' format, only used if assets is a universe table
-        :return: sql query for getting to the assets we want
+        :return: string of the table name that the wanted assets are in
         """
 
+        asset_table = f'universe.{assets}'
+        # checking to see if the user wants all columns
+        if assets == '*':
+            if timeseries_table is None:
+                raise ValueError('Must pass a timeseries_table if assets = \'*\'')
+
+            asset_table = timeseries_table
+
+        # user wants select company's
         if isinstance(assets, str):
-            sql_code = f"""CREATE TEMP TABLE asset_tbl AS (SELECT DISTINCT {search_by}
-                        FROM universe.{assets}
+            tbl_name = '_' + hashlib.sha224(str(assets + str(timeseries_table)).encode()).hexdigest()
+            table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
+                        FROM {asset_table}
                         WHERE date >= \'{start_date}\' AND date <= \'{end_date}\')"""
-            self._con.execute(sql_code)
-            return 'temp.asset_tbl'
+            tbl_name = f'temp.{tbl_name}'
 
         elif isinstance(assets, pd.Series):
-            self._con.con.register('asset_tbl', (assets.to_frame(search_by)))
+            tbl_name = '_' + pd.util.hash_pandas_object(assets)
+            table = assets.to_frame(search_by)
         elif isinstance(assets, List):
-            self._con.con.register('asset_tbl', pd.DataFrame(assets, columns=[search_by]))
+            tbl_name = '_' + hashlib.sha224(str(assets)).hexdigest()
+            table = pd.DataFrame(assets, columns=[search_by])
         else:
             raise ValueError(f'Assets type: {type(assets)} not recognised')
 
-        return 'asset_tbl'
+        self._asset_table = tbl_name
+        self._dict_asset_tables[tbl_name] = table
 
-    @staticmethod
-    def _create_columns_to_select_sql(table: str, search_by: str, fields: List[str], adjust: bool,
-                                      use_date: bool = True) -> str:
+    def _create_columns_to_select_sql(self, fields: Iterable[str], adjust: bool, table: str = None,
+                                      tbl_alias: str = 'data') -> str:
         """
         Creates sql code for the columns we want to get data for and adjusts the data when necessary
-        :param table: the table we are searching must be prefixed by the schema
-        :param search_by: the identifier we are searching by
+        :param table: the table we are searching must be prefixed by the schema, if not passed then adjust must be false
         :param fields: the fields we are getting in our query
         :param adjust: should we adjust the pricing?
-        :return:
+        :param tbl_alias: the alias for the table
+        :return: Sql columns for the select statement
         """
 
         if adjust and table.lower() not in DB_ADJUSTOR_FIELDS:
             raise ValueError(f'Table {table} is not in DB_ADJUSTOR_FIELDS. '
                              f'Valid tables are {list(DB_ADJUSTOR_FIELDS.keys())}')
 
-        table_adj = DB_ADJUSTOR_FIELDS.get(table.lower())
+        if adjust and table is None:
+            raise ValueError('Must pass table if you are adjusting fields')
 
-        if use_date:
-            columns_to_select = ['data.date', 'data.' + search_by]
+        # setting the table refrence
+        if tbl_alias == '':
+            alias = ''
         else:
-            columns_to_select = ['data.' + search_by]
+            alias = f'{tbl_alias}.'
 
+        columns_to_select = []
         for field in fields:
             if adjust:
-                for adj_dict in table_adj:
-                    if 'fields_to_adjustfield' in adj_dict and field in adj_dict['fields_to_adjust']:
-                        if 'function' in adj_dict:
-                            columns_to_select.append(f'{adj_dict["function"]}(data.{field} {adj_dict["operation"]} '
-                                                     f'data.{adj_dict["adjustor"]}) AS {field}')
-                        else:
-                            columns_to_select.append(
-                                f'data.{field} {adj_dict["operation"]} data.{adj_dict["adjustor"]} AS '
-                                f'{field}')
-
-                    else:
-                        columns_to_select.append('data.' + field)
+                columns_to_select.append(self._adjust_field(field=field, table=table, alias=alias))
             else:
-                columns_to_select.append('data.' + field)
+                columns_to_select.append(alias + field)
 
         return ', '.join(set(columns_to_select))
 
-# handle lagging all columns by x
+    @staticmethod
+    def _adjust_field(field, table, alias) -> str:
+        """
+        Makes the SQL code to adjust a given field.
+        If there s no adjustement to be done then it will just return data.field
+        :param field: the single field we want to adjust
+        """
+        table_adj = DB_ADJUSTOR_FIELDS.get(table.lower())
+
+        if table_adj is None:
+            return f'{alias}{field}'
+
+        for diff_adj in table_adj:
+            fields_to_adjust = diff_adj.get('fields_to_adjust')
+            function = diff_adj.get('function')
+            wanted_diff_adj = field in fields_to_adjust
+
+            if wanted_diff_adj and function:
+                return (f'{diff_adj["function"]}({alias}{field} {diff_adj["operation"]} '
+                        f'{alias}{diff_adj["adjustor"]}) AS {field}')
+
+            if wanted_diff_adj:
+                return f'{alias}{field} {diff_adj["operation"]} {alias}{diff_adj["adjustor"]} AS {field}'
+
+        return f'{alias}{field}'
+
+        # handle lagging all columns by x
+
+
+if __name__ == '__main__':
+    qc = QueryConstructor().query_timeseries_table('crsp.security_daily', assets='CRSP_US_500', fields=['prc'],
+                                                   search_by='permno', start_date='2020', end_date='2021')
+    print(qc.pretty_sql)
+    print(qc.df)

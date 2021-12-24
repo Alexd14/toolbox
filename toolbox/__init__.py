@@ -3,6 +3,7 @@ from toolbox.utils.format_data_alphalens import price_format_for_alphalens, fact
 from .ml.ml_factor_calculation import calc_ml_factor
 from .ml.model_wrapper import ModelWrapper
 from .db.read.query_constructor import QueryConstructor
+from .db.api.sql_connection import SQLConnection
 
 __all__ = [
     'ConstituteAdjustment',
@@ -10,6 +11,7 @@ __all__ = [
     'factor_format_for_alphalens',
     'calc_ml_factor',
     'ModelWrapper',
-    'QueryConstructor'
+    'QueryConstructor',
+    'SQLConnection'
 ]
 

@@ -32,5 +32,8 @@ DB_ADJUSTOR_FIELDS = {
 
     'wrds.firm_ratios': [
         {'fields_to_adjust': []}
+    ],
+    'ibes.summary_price_target': [
+        {'fields_to_adjust': []}
     ]
 }
