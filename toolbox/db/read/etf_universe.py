@@ -64,7 +64,7 @@ class ETFUniverse:
         if not self._is_cached_etf(crsp_portno=asset_id):
             self._cache_etf(crsp_portno=asset_id)
 
-        return self._get_cached_path(crsp_portno)
+        return self._get_cached_path(asset_id)
 
     def get_universe_path_parse(self, to_parse):
         """
@@ -187,34 +187,3 @@ def clear_cache():
     for f in files:
         os.remove(f)
     print('Cleared Cache')
-
-
-if __name__ == '__main__':
-    print(ETFUniverse().get_universe_df(crsp_portno=1021980, ticker=None))
-    import pandas as pd
-    from toolbox import QueryConstructor
-
-    start = '2020'
-    end = '2021'
-    # uni = 'CRSP_US_1000'
-    uni = 'ETF_1021980'
-
-    # %%
-
-    ibes_fields = ['FPEDATS', 'ANNDATS', 'ESTIMATOR', 'ANALYS', 'VALUE', 'FPI']
-    street = (
-        QueryConstructor().query_timeseries_table('ibes.detail', fields=ibes_fields, assets='*', search_by='ticker',
-                                                  start_date=start, end_date=end, adjust=False)
-        .distinct()
-        .where("measure = 'EPS'")
-        .add_linker_table(link_table='ibes.crsp_ibes_link', join_on={'ticker': 'ticker'}, link_columns=['permno'],
-                          link_start_col='sdate', link_end_col='edate')
-        .nest()
-        .reset_universe(assets=uni, search_by='permno')
-        .add_to_select("date_diff('day', anndats, date) AS time_to_add")
-        .order_by('date')
-        .set_freq(None)
-        .df
-        )
-
-    print(street)
