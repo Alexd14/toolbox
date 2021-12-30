@@ -6,6 +6,7 @@ import pandas as pd
 import pandas_market_calendars as mcal
 
 from toolbox.db.api.sql_connection import SQLConnection
+from toolbox.db.read.etf_universe import ETFUniverse
 from toolbox.db.settings import DB_ADJUSTOR_FIELDS
 
 # try to import sqlparse, but not required
@@ -77,7 +78,7 @@ class QueryConstructor:
         """
         executes the sql query that the user has created
         """
-        self._regester_universe()
+        self._register_universe()
         raw_df = self._con.execute(self.raw_sql).fetchdf()
         self._con.close()
 
@@ -102,7 +103,7 @@ class QueryConstructor:
 
         return raw_df
 
-    def _regester_universe(self) -> None:
+    def _register_universe(self) -> None:
         """
         regesters the tables in self._dict_asset_tables
         :return: None
@@ -190,16 +191,20 @@ class QueryConstructor:
         :param start_date: first date to query on
         :param end_date: last date to query on
         :param index: what should the index of the returned frame be
+        :param keep_date_col: should the date column be returned?
         :return: Pandas Dataframe Columns: fields; Index: 'date', fields
         """
         query_fields = fields
         if keep_date_col:
             query_fields += ['date']
 
-        select_col_sql = self._create_columns_to_select_sql(table=table, fields=query_fields, adjust=False,
-                                                            tbl_alias='')
+        table = ETFUniverse().get_universe_path_parse(table) if 'ETF' in table else f"universe.{table}"
+
+        select_col_sql = self._create_columns_to_select_sql(fields=query_fields, adjust=False, tbl_alias='')
+
         self._query_string['select'] = select_col_sql
-        self._query_string['from'] = f"""universe.{table}"""
+        self._query_string['from'] = (ETFUniverse().get_universe_path_parse(table) if 'ETF' in table
+                                      else f"universe.{table}")
         self._query_string['where'] = f"""date >= '{start_date}' AND date <= '{end_date}'"""
 
         if index:
@@ -318,7 +323,7 @@ class QueryConstructor:
             row_num = f""", row_number() OVER (PARTITION BY grouper, {self._query_metadata['asset_id']} 
                     ORDER BY date) as row_num"""
 
-        query_str = ', '.join([f"MIN({col}) OVER ffill as {col}" for col in self._query_metadata['fields']])
+        query_str = ', '.join([f"MIN(data.{col}) OVER ffill as {col}" for col in self._query_metadata['fields']])
         self._query_string['select'] = f"""data.date, data.{asset_id}, {query_str} {row_num}"""
         self._query_string['window'] = f"""ffill AS (PARTITION BY {asset_id}, grouper)"""
 
@@ -333,7 +338,7 @@ class QueryConstructor:
 
         return self
 
-    def shift(self, days: int, column: str, new_name: Optional[str] = None):
+    def shift(self, column: str, days: int, new_name: Optional[str] = None):
         """
         Shifts data in a query back by n days
         :param column: the columns to shift back
@@ -395,12 +400,17 @@ class QueryConstructor:
 
         return self
 
-    def add_to_select(self, column: str):
+    def add_to_select(self, column: str, add_field: str = None):
         """
         add custom arithmetic to the select clause
         :param column: the calculation to add to the select column
+        :param add_field: the name to add to the fields metadata, if None then wont asdd anything
         """
         self._query_string['select'] += f""", {column} """
+
+        if add_field:
+            self._query_metadata['fields'].append(add_field)
+
         return self
 
     def nest(self, rewrite_select: bool = True):
@@ -463,12 +473,13 @@ class QueryConstructor:
 
         return self
 
-    def reset_universe(self, assets: Union[List[any], str], search_by: str = None):
+    def reset_universe(self, assets: Union[List[any], str], search_by: str = None, reindex: bool = True):
         """
         will reset the universe for adding from here on. will not alter old universes
         is string then will infer the start and end dates from the query
         :param assets: the assets we want to sent the new universe to. '*' not supported
         :param search_by: what should the search by be, will be set to the QueryConstructors main identifier
+        :param reindex: should we reindex the frame by the universe constitutes
         :return: self
         """
         if search_by:
@@ -482,7 +493,18 @@ class QueryConstructor:
         self._create_asset_filter_sql(assets=assets, search_by=self._query_metadata['asset_id'], start_date=start_date,
                                       end_date=end_date)
 
+        if reindex:
+            self._query_string['from'] += f""" JOIN {self._asset_table} AS uni 
+                                        ON uni.{self._query_metadata['asset_id']} = 
+                                        data.{self._query_metadata['asset_id']} """
+
         return self
+
+    def dropna(self, column):
+        """
+        convince method to drop nas for a column
+        """
+        return self.where(f""" data.{column} IS NOT NULL """)
 
     def _clear_query_string(self, keep: Iterable[str]) -> None:
         """
@@ -522,20 +544,34 @@ class QueryConstructor:
 
             asset_table = timeseries_table
 
-        # user wants select company's
-        if isinstance(assets, str):
+        #  user passes a etf to use as universe
+        if isinstance(assets, str) and 'ETF' in assets:
+            path = ETFUniverse().get_universe_path_parse(assets)
+            tbl_name = assets
+            table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
+                                    FROM '{path}'
+                                    WHERE date >= '{start_date}' AND date <= '{end_date}')"""
+            tbl_name = f'temp.{tbl_name}'
+
+        # user passes a built universe
+        elif isinstance(assets, str):
             tbl_name = '_' + hashlib.sha224(str(assets + str(timeseries_table)).encode()).hexdigest()
             table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
                         FROM {asset_table}
-                        WHERE date >= \'{start_date}\' AND date <= \'{end_date}\')"""
+                        WHERE date >= '{start_date}' AND date <= '{end_date}')"""
             tbl_name = f'temp.{tbl_name}'
 
+        # user passes a seris of assets as universe
         elif isinstance(assets, pd.Series):
             tbl_name = '_' + pd.util.hash_pandas_object(assets)
             table = assets.to_frame(search_by)
+
+        # user passes a list of assets as universe
         elif isinstance(assets, List):
-            tbl_name = '_' + hashlib.sha224(str(assets)).hexdigest()
+            tbl_name = '_' + hashlib.sha224(str(assets).encode('utf-8')).hexdigest()
             table = pd.DataFrame(assets, columns=[search_by])
+
+        # dont know what the user passed raise an error
         else:
             raise ValueError(f'Assets type: {type(assets)} not recognised')
 
@@ -601,11 +637,4 @@ class QueryConstructor:
 
         return f'{alias}{field}'
 
-        # handle lagging all columns by x
-
-
-if __name__ == '__main__':
-    qc = QueryConstructor().query_timeseries_table('crsp.security_daily', assets='CRSP_US_500', fields=['prc'],
-                                                   search_by='permno', start_date='2020', end_date='2021')
-    print(qc.pretty_sql)
-    print(qc.df)
+# handle lagging all columns by x

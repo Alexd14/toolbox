@@ -4,6 +4,7 @@ from .ml.ml_factor_calculation import calc_ml_factor
 from .ml.model_wrapper import ModelWrapper
 from .db.read.query_constructor import QueryConstructor
 from .db.api.sql_connection import SQLConnection
+from .db.read.db_functions import table_info
 
 __all__ = [
     'ConstituteAdjustment',
@@ -12,6 +13,7 @@ __all__ = [
     'calc_ml_factor',
     'ModelWrapper',
     'QueryConstructor',
-    'SQLConnection'
+    'SQLConnection',
+    'table_info'
 ]
 

@@ -107,8 +107,11 @@ class ConstituteAdjustment:
         :param end_date: The last first date we want to get data for string in %Y-%m-%d
         :return: None
         """
-        raw_uni = QueryConstructor().query_universe_table(universe_table, [self.__id_col], start_date, end_date,
-                                                          index=['date', self.__id_col]).set_freq(None).df
+        raw_uni = (QueryConstructor()
+                   .query_universe_table(universe_table, fields=[self.__id_col], start_date=start_date,
+                                         end_date=end_date, index=['date', self.__id_col])
+                   .set_freq(None)
+                   .df)
         self.__index_constitutes_factor = raw_uni.index
 
     def adjust_data_for_membership(self, data: pd.DataFrame, contents: str, date_format: str = '') -> pd.DataFrame:

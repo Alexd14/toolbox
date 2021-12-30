@@ -28,6 +28,8 @@ class IngestDataBase:
             'rename': {'datadate': 'date'},
             'alter_type': {'gsector': 'VARCHAR', 'date': ['timestamp', '%Y%m%d']},
             'index': [{'name': 'ixd2', 'column': 'col1'},  {'name': 'idx2', 'column': 'col2'}]
+            'where': "date > '2000'"
+            'from': "AS data JOIN crsp.crsp_cstat_link as link on data.permno = link.lpermno"
             'rows_to_interpret': 500_000
             }]
         :param overwrite: should the tables be overwritten if they exist?
@@ -87,10 +89,14 @@ class IngestDataBase:
         rows_to_interpret = tbl_to_create[
             'rows_to_interpret'] if 'rows_to_interpret' in tbl_to_create else rows_to_interpret
 
+        where_clause = f"WHERE {tbl_to_create.get('where')}" if tbl_to_create.get('where') else ''
+        from_clause = tbl_to_create.get('from') if tbl_to_create.get('from') else ''
+
         sql_query = f"""
             CREATE TABLE {tbl_name} AS 
                 SELECT * 
-                FROM  read_csv_auto('{tbl_to_create['file_path']}', SAMPLE_SIZE={rows_to_interpret})"""
+                FROM  read_csv_auto('{tbl_to_create['file_path']}', SAMPLE_SIZE={rows_to_interpret}) {from_clause}
+                {where_clause}"""
 
         self._sql_api.execute(sql_query)
 
