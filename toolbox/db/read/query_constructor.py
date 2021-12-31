@@ -164,20 +164,19 @@ class QueryConstructor:
         :param end_date: the last date to get data on in '%Y-%m-%d' format, defaults to 3000
         :return: Pandas Dataframe Columns: fields; Index: 'date', search_by
         """
-        select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + ['date', search_by],
-                                                            adjust=False)
+        select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + [search_by], adjust=False)
         self._create_asset_filter_sql(assets=assets, search_by=search_by, start_date=start_date,
                                       end_date=end_date, timeseries_table=table)
 
-        self._query_string['select'] = f"""{select_col_sql}, min(data.date) AS min_date, max(data.date) AS max_data"""
-        self._query_string['from'] = f"""{table} AS data {self._asset_table} AS uni 
+        self._query_string['select'] = f"""{select_col_sql}, min(data.date) AS min_date, max(data.date) AS max_date"""
+        self._query_string['from'] = f"""{table} AS data JOIN {self._asset_table} AS uni 
                                         ON uni.{search_by} = data.{search_by}"""
         self._query_string['where'] = f"""data.date >= '{start_date}' AND data.date <= '{end_date}'"""
         self._query_string['group_by'] = select_col_sql
 
         self._df_options['index'] = [search_by]
         self._query_metadata['asset_id'] = search_by
-        self._query_metadata['fields'] = fields
+        self._query_metadata['fields'] = fields + ['min_date', 'max_date']
         self.set_freq(None)
 
         return self
@@ -198,12 +197,10 @@ class QueryConstructor:
         if keep_date_col:
             query_fields += ['date']
 
-        table = ETFUniverse().get_universe_path_parse(table) if 'ETF' in table else f"universe.{table}"
-
         select_col_sql = self._create_columns_to_select_sql(fields=query_fields, adjust=False, tbl_alias='')
 
         self._query_string['select'] = select_col_sql
-        self._query_string['from'] = (ETFUniverse().get_universe_path_parse(table) if 'ETF' in table
+        self._query_string['from'] = (f"'{ETFUniverse().get_universe_path_parse(table)}'" if 'ETF' in table
                                       else f"universe.{table}")
         self._query_string['where'] = f"""date >= '{start_date}' AND date <= '{end_date}'"""
 
@@ -413,18 +410,24 @@ class QueryConstructor:
 
         return self
 
-    def nest(self, rewrite_select: bool = True):
+    def nest(self, rewrite_select: bool = True, include_date=True):
         """
         will nest the current sql statement in to the from clause
         and will name the table data
         :param rewrite_select: should we make the default select statement or leave the select statement blank?
+        :param include_date: should we include date in the select statement
         """
         self._query_string['from'] = f""" ({self.raw_sql}) AS data """
         self._clear_query_string(['from'])
 
+        fields = self._query_metadata['fields'] + [self._query_metadata['asset_id']]
+
+        if include_date:
+            fields.append('date')
+
         if rewrite_select:
-            self._query_string['select'] = self._create_columns_to_select_sql(
-                fields=self._query_metadata['fields'] + [self._query_metadata['asset_id'], 'date'], adjust=False)
+            self._query_string['select'] = self._create_columns_to_select_sql(fields=fields, adjust=False)
+
         return self
 
     def where(self, where_condition: str):
