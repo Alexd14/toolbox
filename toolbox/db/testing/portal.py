@@ -40,10 +40,13 @@ class PricingPortal(BaseDeltaPortal, ABC):
         return self._pricing.index.drop_duplicates().to_list()
 
     def _get_pricing(self):
-        df = QueryConstructor().query_timeseries_table(self._schema + '.security_daily', assets=self._assets,
-                                                       start_date=str(self._start), end_date=str(self._end),
-                                                       search_by=self._search_by,
-                                                       fields=[self._field]).distinct().set_calendar('NYSE').df
+        df = (QueryConstructor()
+              .query_timeseries_table(self._schema + '.security_daily', assets=self._assets,
+                                      start_date=str(self._start), end_date=str(self._end), search_by=self._search_by,
+                                      fields=[self._field]).distinct()
+              .set_calendar('NYSE')
+              .order_by('date')
+              .df)
 
         self._pricing = df[self._field].unstack().sort_index().pct_change(1).iloc[1:]. \
             fillna(0).replace([np.inf, -np.inf], 0).clip(-.75, 1.5)

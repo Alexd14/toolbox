@@ -3,7 +3,6 @@ from typing import Iterable, List, Optional, Tuple, Union, Dict
 import re
 import hashlib
 import pandas as pd
-import pandas_market_calendars as mcal
 
 from toolbox.db.api.sql_connection import SQLConnection
 from toolbox.db.read.etf_universe import ETFUniverse
@@ -12,6 +11,12 @@ from toolbox.db.settings import DB_ADJUSTOR_FIELDS
 # try to import sqlparse, but not required
 try:
     import sqlparse
+except ImportError as e:
+    pass
+
+# this allows compatibility with python 3.6
+try:
+    import pandas_market_calendars as mcal
 except ImportError as e:
     pass
 
@@ -541,7 +546,7 @@ class QueryConstructor:
 
         asset_table = f'universe.{assets}'
         # checking to see if the user wants all columns
-        if assets == '*':
+        if isinstance(assets, str) and assets == '*':
             if timeseries_table is None:
                 raise ValueError('Must pass a timeseries_table if assets = \'*\'')
 
@@ -566,7 +571,7 @@ class QueryConstructor:
 
         # user passes a seris of assets as universe
         elif isinstance(assets, pd.Series):
-            tbl_name = '_' + pd.util.hash_pandas_object(assets)
+            tbl_name = '_' + str(pd.util.hash_pandas_object(assets))
             table = assets.to_frame(search_by)
 
         # user passes a list of assets as universe

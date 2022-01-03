@@ -1,3 +1,4 @@
+from toolbox.db.read.etf_universe import clear_cache
 from toolbox.db.write.create_tables import IngestDataBase
 from toolbox.db.write.make_universes import compustat_us_universe, crsp_us_universe
 
@@ -77,6 +78,41 @@ def rebuild_db(drop: bool = False):
             'rename': {},
             'index': [{'name': 'crsp_dist_permno_idx', 'column': 'permno'}]
         },
+        {  # this has non valid UTF8 so had to adjust file
+            'rows_to_interpret': 500_000,
+            'table': 'fund_summary',
+            'schema': 'crsp',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Fund Summary/Fund Summary 196912-202109.gz',
+            'rename': {'caldt': 'date'},
+            # 'where': """ et_flag = 'F' """,
+            'alter_type': {'date': ['timestamp', '%Y%m%d'],
+                           'first_offer_dt': ['timestamp', '%Y%m%d'],
+                           'mgr_dt': ['timestamp', '%Y%m%d'],
+                           'end_dt': ['timestamp', '%Y%m%d'],
+                           'nav_latest_dt': ['timestamp', '%Y%m%d'],
+                           'nav_52w_h_dt': ['timestamp', '%Y%m%d'],
+                           'nav_52w_l_dt': ['timestamp', '%Y%m%d'],
+                           'unrealized_app_dt': ['timestamp', '%Y%m%d'],
+                           'maturity_dt': ['timestamp', '%Y%m%d'],
+                           'fiscal_yearend': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'crsp_mffs_date_idx', 'column': 'date'},
+                      {'name': 'crsp_mffs_crsp_portno_idx', 'column': 'crsp_portno'},
+                      {'name': 'crsp_mffs_ticker_idx', 'column': 'ticker'}]
+        },
+        {
+            'rows_to_interpret': 2_000_000,
+            'table': 'portfolio_holdings',
+            'schema': 'crsp',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Portfolio Holdings/Portfolio Holdings 200101-202109.gz',
+            # 'where': """ crsp_portno in (SELECT distinct crsp_portno FROM crsp.fund_summary) """,
+            'rename': {'report_dt': 'date'},
+            'alter_type': {'date': ['timestamp', '%Y%m%d'],
+                           'eff_dt': ['timestamp', '%Y%m%d'],
+                           'maturity_dt': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'crsp_mfph_date_idx', 'column': 'date'},
+                      {'name': 'crsp_mfph_crsp_portno_idx', 'column': 'crsp_portno'},
+                      {'name': 'crsp_mfph_permno_idx', 'column': 'permno'}]
+        },
 
         #
         # Compustat
@@ -98,10 +134,11 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 500_000,
             'table': 'security_daily',
             'schema': 'cstat',
-            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/3wbicrumplz4cjvu.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/Security Daily 19831231-2021228.csv.gz',
             'custom': """
                         ALTER TABLE cstat.security_daily ADD COLUMN id VARCHAR;
                         ALTER TABLE cstat.security_daily ALTER id SET DATA TYPE VARCHAR USING CONCAT(gvkey, '_', iid);
+                        ALTER TABLE cstat.security_daily DROP BUSDESC;
                       """,
             'rename': {'datadate': 'date'},
             'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
@@ -122,7 +159,7 @@ def rebuild_db(drop: bool = False):
         },
 
         #
-        # WRDS Financial Ratios
+        # WRDS
         #
 
         {
@@ -131,12 +168,26 @@ def rebuild_db(drop: bool = False):
             'table': 'firm_ratios',
             'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20210102.gz',
             'rename': {'public_date': 'date'},
-            'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
-                           'edate': ['timestamp', '%Y%m%d']},
+            'alter_type': {'adate': ['timestamp', '%Y%m%d'],
+                           'qdate': ['timestamp', '%Y%m%d'],
+                           'date': ['timestamp', '%Y%m%d']},
             'index':
                 [{'name': 'wrds_firm_date_idx', 'column': 'date'},
                  {'name': 'wrds_firm_permno_idx', 'column': 'permno'},
                  {'name': 'wrds_firm_gvkey_idx', 'column': 'gvkey'}]
+        },
+        {
+            'rows_to_interpret': 50_000,
+            'schema': 'wrds',
+            'table': 'subsidiary',
+            'file_path': '/Users/alex/Desktop/WRDS/Subsidary Data By WRDS/Company Subsidiaries/WRDS Company Subidiary Data (Beta) 199312-202004.gz',
+            'rename': {'SECPDATE': 'date'},
+            'alter_type': {'FDATE': ['timestamp', '%Y%m%d'],
+                           'RDATE': ['timestamp', '%Y%m%d'],
+                           'date': ['timestamp', '%Y%m%d']},
+            'index':
+                [{'name': 'wrds_sub_date_idx', 'column': 'date'},
+                 {'name': 'wrds_sub_gvkey_idx', 'column': 'gvkey'}]
         },
 
         #
@@ -183,24 +234,42 @@ def rebuild_db(drop: bool = False):
                       {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
                       {'name': 'ibes_ss_currcode_idx', 'column': 'curcode'},
                       {'name': 'ibes_ss_measure_idx', 'column': 'measure'}]
+        },
+        {
+            'rows_to_interpret': 50000,
+            'table': 'detail',
+            'schema': 'ibes',
+            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Detail History/Detail File WIth Actuals/Detail File With Actuals 197001-202108.csv.gz',
+            'rename': {'ACTDATS': 'date'},
+            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+                           'FPEDATS': ['timestamp', '%Y%m%d'],
+                           'REVDATS': ['timestamp', '%Y%m%d'],
+                           'ANNDATS': ['timestamp', '%Y%m%d'],
+                           'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
+                           'ACTDATS_ACT': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
+                      {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
+                      {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
+                      {'name': 'ibes_ss_measure_idx', 'column': 'measure'},
+                      {'name': 'ibes_ss_fpi_idx', 'column': 'fpi'}]
         }
     ]
 
-    # building the tables
-    IngestDataBase().ingest(tbls, drop, rows_to_interpret=2000)
+    # building the tables, chunking the tables to insert bc if we dont then them tmep will balloon in size
+    for inner_tbl_list in [tbls[i:i + 3] for i in range(0, len(tbls), 3)]:
+        IngestDataBase().ingest(inner_tbl_list, drop, rows_to_interpret=2000)
 
     # building crsp universes
-    crsp_us_universe(max_rank=100)
-    crsp_us_universe(max_rank=500)
-    crsp_us_universe(max_rank=750)
+    crsp_us_universe(max_rank=500, rebuild_mc_ranking=True)
     crsp_us_universe(max_rank=1000)
     crsp_us_universe(max_rank=3000)
     crsp_us_universe(min_rank=1000, max_rank=3000)
 
     # building compustat universes
-    compustat_us_universe(max_rank=100)
-    compustat_us_universe(max_rank=500)
-    compustat_us_universe(max_rank=750)
+    compustat_us_universe(max_rank=500, rebuild_mc_ranking=True)
     compustat_us_universe(max_rank=1000)
     compustat_us_universe(max_rank=3000)
     compustat_us_universe(min_rank=1000, max_rank=3000)
+
+    # clearing the etf universe cache
+    clear_cache()

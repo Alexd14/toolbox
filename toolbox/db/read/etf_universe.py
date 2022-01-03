@@ -3,12 +3,19 @@ import os.path
 import pandas as pd
 
 from typing import Union
-import pandas_market_calendars as mcal
 
 from toolbox.db.settings import CACHE_DIRECTORY
 from toolbox.db.api.sql_connection import SQLConnection
 
-MAP_ETF_SYMBOL_ID = {}
+# this allows compatibility with python 3.6
+try:
+    import pandas_market_calendars as mcal
+except ImportError as e:
+    pass
+
+MAP_ETF_SYMBOL_ID = {'SPY': 1021980,
+                     'IWM': 1025818,
+                     'IWV': 1025817}
 
 
 class ETFUniverse:
@@ -76,7 +83,7 @@ class ETFUniverse:
                 'ETF_5648362'
         """
         to_parse = to_parse.upper()
-        if 'ETF_TICKER' in to_parse:
+        if 'ETF_T' in to_parse:
             return self.get_universe_path(ticker=to_parse.split('_')[-1])
         elif 'ETF_' in to_parse:
             return self.get_universe_path(crsp_portno=to_parse.split('_')[-1])

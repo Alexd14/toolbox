@@ -2,10 +2,15 @@ from typing import List, Optional, Union
 
 import duckdb
 import pandas as pd
-import pandas_market_calendars as mcal
 
 from toolbox.db.read.query_constructor import QueryConstructor
 from toolbox.utils.handle_data import handle_duplicates
+
+# this allows compatibility with python 3.6
+try:
+    import pandas_market_calendars as mcal
+except ImportError as e:
+    pass
 
 
 class ConstituteAdjustment:

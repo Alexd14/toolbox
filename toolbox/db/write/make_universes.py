@@ -1,9 +1,14 @@
 import logging
 
 import pandas as pd
-import pandas_market_calendars as mcal
 
 from toolbox.db.api.sql_connection import SQLConnection
+
+# this allows compatibility with python 3.6
+try:
+    import pandas_market_calendars as mcal
+except ImportError as e:
+    pass
 
 logging.basicConfig(format='%(message)s ::: %(asctime)s', datefmt='%I:%M:%S %p', level=logging.INFO)
 
