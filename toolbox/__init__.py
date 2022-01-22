@@ -1,7 +1,7 @@
 from .constitutes.constitute_adjustment import ConstituteAdjustment
 from toolbox.utils.format_data_alphalens import price_format_for_alphalens, factor_format_for_alphalens
-from .ml.ml_factor_calculation import calc_ml_factor
-from .ml.model_wrapper import ModelWrapper
+from toolbox.utils.ml_factor_calculation import calc_ml_factor
+from toolbox.utils.ml_factor_calculation import ModelWrapper
 from .db.read.query_constructor import QueryConstructor
 from .db.api.sql_connection import SQLConnection
 from .db.read.db_functions import table_info

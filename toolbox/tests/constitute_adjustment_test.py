@@ -138,6 +138,8 @@ class ConstituteAdjustmentTest(unittest.TestCase):
         self.examples()
         filtered = self.ca.adjust_data_for_membership(data=self.foo_data, date_format='%Y-%m-%d',
                                                       contents='factor')
+        print(filtered.sort_index().index)
+        print(self.adjusted_foo.sort_index().index)
         self.assertTrue(self.adjusted_foo.sort_index().equals(filtered.sort_index()))
 
     def test_pad_adjust_data_for_membership(self):

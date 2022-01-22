@@ -4,8 +4,8 @@ from abc import ABC
 import numpy as np
 import pandas as pd
 
-from toolbox.ml.ml_factor_calculation import ModelWrapper, calc_ml_factor, generate_indexes
-from toolbox.utils.slice_holder import SliceHolder
+from toolbox.utils.ml_factor_calculation import ModelWrapper, calc_ml_factor, generate_indexes
+from toolbox.utils.ml_factor_calculation import SliceHolder
 
 
 class MyTestCase(unittest.TestCase):
