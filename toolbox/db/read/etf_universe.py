@@ -75,18 +75,21 @@ class ETFUniverse:
 
     def get_universe_path_parse(self, to_parse):
         """
-        wraper that parses a string for get_universe_path, can tell if user passed a symbol or crsp_portno
+        wrapper that parses a string for get_universe_path, can tell if user passed a symbol or crsp_portno
         format:
             ticker:
-                'ETF_TICKER_SPY'
+                'ETF_SPY'
             crsp_portno:
                 'ETF_5648362'
         """
         to_parse = to_parse.upper()
-        if 'ETF_T' in to_parse:
-            return self.get_universe_path(ticker=to_parse.split('_')[-1])
-        elif 'ETF_' in to_parse:
-            return self.get_universe_path(crsp_portno=to_parse.split('_')[-1])
+
+        if 'ETF_' in to_parse:
+            id_etf = to_parse.split('_')[-1]
+            if id_etf.isdigit():
+                return self.get_universe_path(crsp_portno=to_parse.split('_')[-1])
+            else:
+                return self.get_universe_path(ticker=to_parse.split('_')[-1])
         else:
             raise ValueError(f"Can't parse {to_parse}")
 
@@ -109,12 +112,15 @@ class ETFUniverse:
             lambda grp: list(grp.value_counts().index))
 
         end_date = pd.to_datetime('now').date().strftime('%Y-%m-%d')
+        start_date = df_of_holdings.index.min()
+
+        full_cal = pd.date_range(start=start_date, end=end_date, freq='D').tz_localize(None)
 
         trading_cal = mcal.get_calendar(
-            'NYSE').valid_days(start_date=df_of_holdings.index.min(),
-                               end_date=end_date).tz_localize(None).to_series().to_frame('date')
+            'NYSE').valid_days(start_date=start_date, end_date=end_date).tz_localize(
+            None)
 
-        universe = trading_cal.join(df_of_holdings).ffill()
+        universe = df_of_holdings.reindex(full_cal.tolist()).ffill().reindex(trading_cal.tolist())
 
         relational_format = [(row[0], permno) for row in universe.values for permno in row[1]]
         uni_df = pd.DataFrame(relational_format, columns=['date', 'permno'])
@@ -159,7 +165,7 @@ class ETFUniverse:
 
     def _is_cached_etf(self, crsp_portno) -> bool:
         """
-        is a etf cached?
+        is the etf cached?
         """
         return os.path.isfile(self._get_cached_path(crsp_portno))
 
@@ -187,10 +193,9 @@ class ETFUniverse:
 
 def clear_cache():
     """
-    Clears all files in the CACHE_DIRECTORY path
+    Clears all parquet files in the CACHE_DIRECTORY path
     """
-
-    files = glob.glob(f'{CACHE_DIRECTORY}/*')
+    files = glob.glob(f'{CACHE_DIRECTORY}/*.parquet')
     for f in files:
         os.remove(f)
     print('Cleared Cache')

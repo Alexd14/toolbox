@@ -3,7 +3,7 @@ Define Global Settings
 """
 
 DB_CONNECTION_STRING = '/Users/alex/Desktop/DB/wrds.duckdb'  # the directory to the sql database
-CACHE_DIRECTORY = '/tmp/toolbox_cache'  # the directory to cache files
+CACHE_DIRECTORY = '/tmp'  # the directory to cache files
 
 DB_ADJUSTOR_FIELDS = {
     'cstat.security_daily': [

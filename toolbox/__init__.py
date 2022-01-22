@@ -5,6 +5,7 @@ from .ml.model_wrapper import ModelWrapper
 from .db.read.query_constructor import QueryConstructor
 from .db.api.sql_connection import SQLConnection
 from .db.read.db_functions import table_info
+from .db.write.create_tables import IngestDataBase
 
 __all__ = [
     'ConstituteAdjustment',
@@ -14,6 +15,7 @@ __all__ = [
     'ModelWrapper',
     'QueryConstructor',
     'SQLConnection',
-    'table_info'
+    'table_info',
+    'IngestDataBase'
 ]
 

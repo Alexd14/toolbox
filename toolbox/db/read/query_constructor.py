@@ -101,7 +101,7 @@ class QueryConstructor:
         makes the changes to the dataframe query specified by self._df_options
         :param raw_df: the dataframe we are applying the changes to
         """
-        if self._df_options['freq']:
+        if self._df_options['freq'] and 'date' in raw_df.columns:
             raw_df['date'] = raw_df['date'].dt.to_period(self._df_options['freq'])
 
         raw_df = raw_df.set_index(self._df_options['index']) if self._df_options['index'] else raw_df
@@ -124,7 +124,7 @@ class QueryConstructor:
             else:
                 raise ValueError('Unknown type to regester asset table')
 
-    def query_timeseries_table(self, table: str, fields: List[str], assets: Optional[Union[List[any], str]],
+    def query_timeseries_table(self, table: str, fields: List[str], assets: Union[Iterable[any], str],
                                search_by: str, start_date: str, end_date: str = '3000', adjust: bool = True):
         """
         constructs a query to get timeseries data from the database
@@ -135,7 +135,7 @@ class QueryConstructor:
         :param start_date: the first date to get data on in '%Y-%m-%d' format
         :param end_date: the last date to get data on in '%Y-%m-%d' format
         :param adjust: should we adjust the pricing?
-        :return: Pandas Dataframe Columns: fields; Index: ('date', search_by)
+        :return: self
         """
 
         self._query_string['select'] = self._create_columns_to_select_sql(table=table,
@@ -155,7 +155,7 @@ class QueryConstructor:
 
         return self
 
-    def query_static_table(self, table: str, fields: List[str], assets: Optional[Union[List[any], str]],
+    def query_static_table(self, table: str, fields: List[str], assets: Union[Iterable[any], str],
                            search_by: str, start_date: str = '1900', end_date: str = '3000'):
         """
         Reads static data fom the database.
@@ -167,7 +167,7 @@ class QueryConstructor:
         :param fields: the fields we are getting in our query
         :param start_date: the first date to get data on in '%Y-%m-%d' format, defaults to 1900
         :param end_date: the last date to get data on in '%Y-%m-%d' format, defaults to 3000
-        :return: Pandas Dataframe Columns: fields; Index: 'date', search_by
+        :return: self
         """
         select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + [search_by], adjust=False)
         self._create_asset_filter_sql(assets=assets, search_by=search_by, start_date=start_date,
@@ -182,7 +182,6 @@ class QueryConstructor:
         self._df_options['index'] = [search_by]
         self._query_metadata['asset_id'] = search_by
         self._query_metadata['fields'] = fields + ['min_date', 'max_date']
-        self.set_freq(None)
 
         return self
 
@@ -196,7 +195,7 @@ class QueryConstructor:
         :param end_date: last date to query on
         :param index: what should the index of the returned frame be
         :param keep_date_col: should the date column be returned?
-        :return: Pandas Dataframe Columns: fields; Index: 'date', fields
+        :return: self
         """
         query_fields = fields
         if keep_date_col:
@@ -213,6 +212,29 @@ class QueryConstructor:
             self._df_options['index'] = index
 
         return self
+
+    def query_no_date_table(self, table: str, fields: List[str], assets: Union[Iterable[any], str],
+                            search_by: str):
+        """
+        get data from a table with no date column
+        :param table: the table we are searching must be prefixed by the schema
+        :param fields: fields to pull from the table
+        :param assets: the assets we want to get data for, or a universe table
+        :param search_by: the identifier we are searching by
+        :return: self
+        """
+        select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + [search_by], adjust=False)
+        self._create_asset_filter_sql(assets=assets, search_by=search_by)
+
+        self._query_string['select'] = select_col_sql
+        self._query_string['from'] = f"""{table} AS data JOIN {self._asset_table} AS uni 
+                                                ON uni.{search_by} = data.{search_by}"""
+
+        self._df_options['index'] = [search_by]
+        self._query_metadata['asset_id'] = search_by
+        self._query_metadata['fields'] = fields + ['min_date', 'max_date']
+        return self
+
 
     def distinct(self):
         """
@@ -531,8 +553,8 @@ class QueryConstructor:
         end_date = re.compile("data\.date <= ([^\s]+)").search(searching).group(1).replace('\'', '')
         return start_date, end_date
 
-    def _create_asset_filter_sql(self, assets: Union[List[Union[int, str]], str], search_by: str, start_date: str,
-                                 end_date: str, timeseries_table: str = None) -> None:
+    def _create_asset_filter_sql(self, assets: Union[List[Union[int, str]], str], search_by: str,
+                                 start_date: str = None, end_date: str = None, timeseries_table: str = None) -> None:
         """
         Sets the self._asset_table to the table name of thew table containing the assets
         param assets: the assets we want to get data for, or a universe table
@@ -569,14 +591,9 @@ class QueryConstructor:
                         WHERE date >= '{start_date}' AND date <= '{end_date}')"""
             tbl_name = f'temp.{tbl_name}'
 
-        # user passes a seris of assets as universe
-        elif isinstance(assets, pd.Series):
-            tbl_name = '_' + str(pd.util.hash_pandas_object(assets))
-            table = assets.to_frame(search_by)
-
-        # user passes a list of assets as universe
-        elif isinstance(assets, List):
-            tbl_name = '_' + hashlib.sha224(str(assets).encode('utf-8')).hexdigest()
+        # We have an iterable of assets
+        elif isinstance(assets, Iterable):
+            tbl_name = '_' + hashlib.sha224(str(list(assets)).encode('utf-8')).hexdigest()
             table = pd.DataFrame(assets, columns=[search_by])
 
         # dont know what the user passed raise an error
