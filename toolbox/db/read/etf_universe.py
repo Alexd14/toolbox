@@ -120,7 +120,7 @@ class ETFUniverse:
             'NYSE').valid_days(start_date=start_date, end_date=end_date).tz_localize(
             None)
 
-        universe = df_of_holdings.reindex(full_cal.tolist()).ffill().reindex(trading_cal.tolist())
+        universe = df_of_holdings.reindex(full_cal.tolist()).ffill().reindex(trading_cal.tolist()).reset_index()
 
         relational_format = [(row[0], permno) for row in universe.values for permno in row[1]]
         uni_df = pd.DataFrame(relational_format, columns=['date', 'permno'])
@@ -199,3 +199,7 @@ def clear_cache():
     for f in files:
         os.remove(f)
     print('Cleared Cache')
+
+
+if __name__ == '__main__':
+    ETFUniverse().get_universe_df(ticker='VTI')

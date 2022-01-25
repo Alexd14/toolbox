@@ -17,7 +17,7 @@ def rebuild_db(drop: bool = False):
             'schema': 'ccm',
             'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/CRSP:Compustst Merged/Compustat CRSP Link/rc9ie3efp9e3opdf.csv',
             'custom': """
-                        UPDATE ccm.crsp_cstat_link SET LINKENDDT=99991231 WHERE LINKENDDT = 'E';
+                        UPDATE ccm.crsp_cstat_link SET LINKENDDT=20501231 WHERE LINKENDDT = 'E';
                       """,
             'alter_type': {'LINKDT': ['timestamp', '%Y%m%d'],
                            'LINKENDDT': ['timestamp', '%Y%m%d'],
@@ -166,7 +166,7 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 50_000,
             'schema': 'wrds',
             'table': 'firm_ratios',
-            'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20210102.gz',
+            'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20220123.csv.gz',
             'rename': {'public_date': 'date'},
             'alter_type': {'adate': ['timestamp', '%Y%m%d'],
                            'qdate': ['timestamp', '%Y%m%d'],
@@ -252,6 +252,23 @@ def rebuild_db(drop: bool = False):
                       {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
                       {'name': 'ibes_ss_measure_idx', 'column': 'measure'},
                       {'name': 'ibes_ss_fpi_idx', 'column': 'fpi'}]
+        },
+
+        #
+        # Audit Analytics
+        #
+        {
+            'rows_to_interpret': 500000,
+            'table': 'audit_opinions',
+            'schema': 'aa',
+            'file_path': '/Users/alex/Desktop/WRDS/Audit Analytics/Audit Opinions/lbsyljuigehonvhr.csv',
+            'rename': {'FILE_ACCEPTED': 'date',
+                       'COMPANY_FKEY': 'cik'},
+            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+                           # 'FISCAL_YEAR_ENDED_OF_OPINION': ['timestamp', '%Y%m%d']
+                           },
+            'index': [{'name': 'aa_ss_date_idx', 'column': 'date'},
+                      {'COMPANY_FKEY': 'aa_ss_ticker_idx', 'column': 'cik'}]
         }
     ]
 
