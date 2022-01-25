@@ -491,7 +491,7 @@ class QueryConstructor:
         columns_linker = self._create_columns_to_select_sql(fields=set(link_columns + list(join_on.values())),
                                                             adjust=False, tbl_alias='link')
 
-        on_clause = ' '.join([f'data.{main} = link.{link}' for main, link in join_on.items()])
+        on_clause = ' AND '.join([f'data.{main} = link.{link}' for main, link in join_on.items()])
 
         self._query_string['select'] += ', ' + columns_linker
         self._query_string['from'] += f""" JOIN {link_table} AS link ON {on_clause} """
