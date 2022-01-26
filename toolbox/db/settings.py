@@ -38,3 +38,15 @@ DB_ADJUSTOR_FIELDS = {
         {'fields_to_adjust': []}
     ]
 }
+
+# sql code to link permno to cstat and ibes
+ADD_ALL_LINKS_TO_PERMNO = """
+(
+    SELECT --columns 
+    FROM
+        --from LEFT JOIN link.crsp_cstat_link AS ccm ON (uni.permno = ccm.lpermno AND uni.date >= ccm.linkdt 
+                AND uni.date <= ccm.linkenddt AND (ccm.linktype = 'LU' OR ccm.linktype = 'LC'))
+        LEFT JOIN link.crsp_ibes_link AS crib ON (uni.permno = crib.permno AND uni.date >= crib.sdate 
+            AND uni.date <= crib.edate)
+)
+"""

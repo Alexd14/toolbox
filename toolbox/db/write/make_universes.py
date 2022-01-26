@@ -5,6 +5,8 @@ import pandas as pd
 from toolbox.db.api.sql_connection import SQLConnection
 
 # this allows compatibility with python 3.6
+from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO
+
 try:
     import pandas_market_calendars as mcal
 except ImportError as e:
@@ -61,7 +63,7 @@ def compustat_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '2
 
 
 def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
-                     set_indexes=True, rebuild_mc_ranking: bool = False) -> None:
+                     set_indexes=True, rebuild_mc_ranking: bool = False, link: bool = True) -> None:
     """
     Generates a universe of the top N stocks domiciled in the US by market cap
     Will only use companies primary share
@@ -70,6 +72,7 @@ def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
     :param start_date: the minimum date for creating the universe
     :param set_indexes: Should we index the universe by
     :param rebuild_mc_ranking: should we rebuild the ranking table universe.crsp_mc_rank?
+    :param link: should we link to cstat and ibes
     :return: None
     """
     # getting the trading calendar so we dont have bad dates
@@ -87,16 +90,24 @@ def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
 
     sql_ensure_table_open = f'DROP TABLE IF EXISTS {table_name};'
     sql_make_universe_table = f""" 
-    CREATE TABLE {table_name} 
-    AS 
         (
         SELECT date, permno, permco, ttm_min_prc, ttm_mc, ttm_mc_rank
         FROM universe.crsp_mc_rank 
         WHERE ttm_mc_rank >= {min_rank} AND 
             ttm_mc_rank <= {max_rank} AND 
             date > '{start_date}'
-        )  
+        ) as uni
         """
+
+    # will add linking tables
+    if link:
+        columns = ', '.join(['uni.*', 'gvkey', 'liid as iid, ''ticker', 'cusip',
+                             "CASE WHEN gvkey NOT NULL THEN CONCAT(gvkey, '_', liid) ELSE NULL END as id"])
+        sql_make_universe_table = '(' + (ADD_ALL_LINKS_TO_PERMNO
+                                         .replace('--columns', columns)
+                                         .replace('--from', sql_make_universe_table)) + ')'
+
+    sql_make_universe_table = f"""CREATE TABLE {table_name} AS """ + sql_make_universe_table
 
     # making the db connection
     con = SQLConnection(read_only=False).con
@@ -156,6 +167,7 @@ def _make_cstat_us_universe_base_table():
                           ttm_min_prccd > 3
                     )
                 )
+            ORDER BY date
             """
 
     # making the db connection
@@ -215,6 +227,7 @@ def _make_crsp_us_universe_base_table():
                 WHERE ttm_mc IS NOT NULL AND
                       ttm_min_prc > 3 
                 )
+            ORDER BY date
         """
 
     # making the db connection
@@ -225,3 +238,10 @@ def _make_crsp_us_universe_base_table():
     con.close()
 
     logging.info(f'Finished Ranking Table {table_name}')
+
+
+if __name__ == '__main__':
+    crsp_us_universe(max_rank=500, rebuild_mc_ranking=False)
+    crsp_us_universe(max_rank=1000)
+    crsp_us_universe(max_rank=3000)
+    crsp_us_universe(min_rank=1000, max_rank=3000)

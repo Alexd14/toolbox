@@ -10,14 +10,14 @@ def rebuild_db(drop: bool = False):
     """
     tbls = [
         #
-        # CRSP Compustat Link
+        # Linking
         #
         {
             'table': 'crsp_cstat_link',
-            'schema': 'ccm',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/CRSP:Compustst Merged/Compustat CRSP Link/rc9ie3efp9e3opdf.csv',
+            'schema': 'link',
+            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/rc9ie3efp9e3opdf.csv',
             'custom': """
-                        UPDATE ccm.crsp_cstat_link SET LINKENDDT=20501231 WHERE LINKENDDT = 'E';
+                        UPDATE link.crsp_cstat_link SET LINKENDDT=20501231 WHERE LINKENDDT = 'E';
                       """,
             'alter_type': {'LINKDT': ['timestamp', '%Y%m%d'],
                            'LINKENDDT': ['timestamp', '%Y%m%d'],
@@ -25,6 +25,20 @@ def rebuild_db(drop: bool = False):
             'index': [{'name': 'ccm_link_lpermno_idx', 'column': 'lpermno'},
                       {'name': 'ccm_link_gvkey_idx', 'column': 'gvkey'},
                       {'name': 'ccm_link_liid_idx', 'column': 'liid'}]
+        },
+
+        {
+            'rows_to_interpret': 100,
+            'schema': 'link',
+            'table': 'crsp_ibes_link',
+            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/luhmjdovofexjxwg.csv',
+            'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
+                           'edate': ['timestamp', '%Y%m%d']},
+            'index':
+                [{'name': 'crsp_ibes_permno_idx', 'column': 'permno'},
+                 {'name': 'crsp_ibes_ticker_idx', 'column': 'ticker'},
+                 {'name': 'crsp_ibes_sdate_idx', 'column': 'sdate'},
+                 {'name': 'crsp_ibes_edate_idx', 'column': 'edate'}]
         },
 
         #
@@ -134,7 +148,7 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 500_000,
             'table': 'security_daily',
             'schema': 'cstat',
-            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/Security Daily 19831231-2021228.csv.gz',
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/Security Daily 19831231-20220124.csv.gz',
             'custom': """
                         ALTER TABLE cstat.security_daily ADD COLUMN id VARCHAR;
                         ALTER TABLE cstat.security_daily ALTER id SET DATA TYPE VARCHAR USING CONCAT(gvkey, '_', iid);
@@ -193,20 +207,6 @@ def rebuild_db(drop: bool = False):
         #
         # IBES
         #
-
-        {
-            'rows_to_interpret': 100,
-            'schema': 'ibes',
-            'table': 'crsp_ibes_link',
-            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES CRSP Link/luhmjdovofexjxwg.csv',
-            'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
-                           'edate': ['timestamp', '%Y%m%d']},
-            'index':
-                [{'name': 'crsp_ibes_permno_idx', 'column': 'permno'},
-                 {'name': 'crsp_ibes_ticker_idx', 'column': 'ticker'},
-                 {'name': 'crsp_ibes_sdate_idx', 'column': 'sdate'},
-                 {'name': 'crsp_ibes_edate_idx', 'column': 'edate'}]
-        },
 
         {
             'rows_to_interpret': 5000,

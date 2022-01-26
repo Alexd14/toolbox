@@ -117,9 +117,14 @@ class ConstituteAdjustment:
                                          end_date=end_date, index=['date', self.__id_col])
                    .set_freq(None)
                    .df)
-        self.__index_constitutes_factor = raw_uni.index
 
-    def adjust_data_for_membership(self, data: pd.DataFrame, contents: str, date_format: str = '') -> pd.DataFrame:
+        missing_id_for = raw_uni.index.to_frame()[self.__id_col].isnull().sum() / len(raw_uni)
+        print(f"Universe missing {self.__id_col} for {round(missing_id_for, 3) * 100}% of data points")
+
+        self.__index_constitutes_factor = raw_uni.index.dropna()
+
+    def adjust_data_for_membership(self, data: pd.DataFrame, contents: str = 'factor',
+                                   date_format: str = '') -> pd.DataFrame:
         """
         adjusts the data set accounting for when assets are a member of the index defined in add_index_info.
         add_index_info must be declared before this method

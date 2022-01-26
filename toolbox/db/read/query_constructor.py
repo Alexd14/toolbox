@@ -235,7 +235,6 @@ class QueryConstructor:
         self._query_metadata['fields'] = fields + ['min_date', 'max_date']
         return self
 
-
     def distinct(self):
         """
         will make add a distinct keyword to the select clause of a query
@@ -479,7 +478,7 @@ class QueryConstructor:
         return self
 
     def add_linker_table(self, link_table: str, join_on: Dict[str, str], link_columns: List[str],
-                         link_start_col: str = None, link_end_col: str = None):
+                         link_start_col: str = None, link_end_col: str = None, extra_filter: str = ''):
         """
         joins a linker table onto the current query
         :param link_table:the table containing the linking information
@@ -487,6 +486,7 @@ class QueryConstructor:
         :param link_columns: the columns to get from the linking table
         :param link_start_col: the startdate of the link
         :param link_end_col: the end date of the link
+        :param extra_filter: extra join filter to be applied
         """
         columns_linker = self._create_columns_to_select_sql(fields=set(link_columns + list(join_on.values())),
                                                             adjust=False, tbl_alias='link')
@@ -494,10 +494,12 @@ class QueryConstructor:
         on_clause = ' AND '.join([f'data.{main} = link.{link}' for main, link in join_on.items()])
 
         self._query_string['select'] += ', ' + columns_linker
-        self._query_string['from'] += f""" JOIN {link_table} AS link ON {on_clause} """
+        self._query_string['from'] += f""" LEFT JOIN {link_table} AS link ON ({on_clause} """
 
         if link_start_col and link_end_col:
-            self.where(f"""data.date > link.{link_start_col} AND data.date < link.{link_end_col}""")
+            self._query_string['from'] += f""" AND data.date > link.{link_start_col} AND data.date < link.{link_end_col}"""
+
+        self._query_string['from'] += f"""{' AND ' + extra_filter if extra_filter else ''})"""
 
         self._query_metadata['fields'] += link_columns
 
@@ -576,7 +578,7 @@ class QueryConstructor:
 
         #  user passes a etf to use as universe
         if isinstance(assets, str) and 'ETF' in assets:
-            path = ETFUniverse().get_universe_path_parse(assets)
+            path = ETFUniverse(con=self._con).get_universe_path_parse(assets)
             tbl_name = assets
             table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
                                     FROM '{path}'
@@ -600,8 +602,48 @@ class QueryConstructor:
         else:
             raise ValueError(f'Assets type: {type(assets)} not recognised')
 
+        # table = self._add_uni_args(assets, table)
+
         self._asset_table = tbl_name
         self._dict_asset_tables[tbl_name] = table
+
+        #     def _add_uni_args(self, assets: any, table: any):
+        #         """
+        #         Parses string arguments for performing alterations to the universe before any SQL is executed
+        #         :param assets: the assets passed by the user
+        #         :param table: the current query to make the universe table
+        #
+        #         possible args:
+        #             "CRSP_US_1000 --link"
+        #             Will link to ccm llinker table and ibes linker table
+        #         """
+        #         if (not isinstance(assets, str)) or '--' in assets:
+        #             return table
+        #
+        #         args = assets.split('--')[1:]
+        #
+        #         for arg in args:
+        #             if 'link' in arg:
+        #                 self._add_link_to_uni(arg, table)
+        #             else:
+        #                 raise ValueError(f'Command {arg} is not recognised')
+        #
+        #     def _add_link_to_uni(self, arg:str, table: str):
+        #         """
+        #         "CRSP_US_1000 --link"
+        #          Will link to ccm llinker table and ibes linker table
+        #          Assumes we have permno in universe
+        #         """
+        #
+        #         link_tbl_from = arg.split(' ')[1]
+        #         linto_tbl_to =
+        #
+        #         regex_ptn = r'FROM(.*?)WHERE'
+        #         passed_from = re.search(regex_ptn, table).group(1)
+        #
+        #         new_from = f""" {passed_from} LEFT JOIN """
+        #
+        # passed_from += """ JOIN """
 
     def _create_columns_to_select_sql(self, fields: Iterable[str], adjust: bool, table: str = None,
                                       tbl_alias: str = 'data') -> str:

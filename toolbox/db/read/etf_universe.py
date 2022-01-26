@@ -4,7 +4,7 @@ import pandas as pd
 
 from typing import Union
 
-from toolbox.db.settings import CACHE_DIRECTORY
+from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO, CACHE_DIRECTORY
 from toolbox.db.api.sql_connection import SQLConnection
 
 # this allows compatibility with python 3.6
@@ -29,7 +29,7 @@ class ETFUniverse:
         :param con: A connection to the database, if not passed then will open a new write connection.
             if the there is universe creation going on then must pass a write connection
         """
-        self._con = con if con else SQLConnection(read_only=False)
+        self._con = con if con else SQLConnection()
 
     def get_universe_df(self, ticker: str = None, crsp_portno: int = None, start_date: str = '2000',
                         end_date: str = '2023') -> Union[pd.DataFrame, str]:
@@ -99,6 +99,7 @@ class ETFUniverse:
         will cache etf in temp directory of the computer
         :return: pd.Dataframe index: int_range; columns: date, permno;
         """
+        print('Caching ETF Holdings')
 
         sql_for_holdings = f"""
                 SELECT DISTINCT date, permno 
@@ -124,10 +125,23 @@ class ETFUniverse:
 
         relational_format = [(row[0], permno) for row in universe.values for permno in row[1]]
         uni_df = pd.DataFrame(relational_format, columns=['date', 'permno'])
+        uni_df = self._link_to_ids(uni_df)
 
         self._cache_helper(uni_df=uni_df, crsp_portno=crsp_portno)
 
         return uni_df
+
+    def _link_to_ids(self, uni_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        join cstat and ibes links to current universe df
+        """
+        columns = ', '.join(['date', 'uni.permno', 'gvkey', 'liid as iid, ''ticker', 'cusip',
+                             "CASE WHEN gvkey NOT NULL THEN CONCAT(gvkey, '_', liid) ELSE NULL END as id"])
+        from_start = " uni_df as uni "
+
+        sql_code = ADD_ALL_LINKS_TO_PERMNO.replace('--columns', columns).replace('--from', from_start)
+
+        return self._con.con.execute(sql_code).fetchdf()
 
     def _get_crsp_portno(self, ticker, crsp_portno) -> int:
         """
@@ -202,4 +216,4 @@ def clear_cache():
 
 
 if __name__ == '__main__':
-    ETFUniverse().get_universe_df(ticker='VTI')
+    print(ETFUniverse().get_universe_df(ticker='ESPO'))
