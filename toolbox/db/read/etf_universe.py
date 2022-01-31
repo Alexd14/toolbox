@@ -1,5 +1,6 @@
 import glob
 import os.path
+
 import pandas as pd
 
 from typing import Union
@@ -112,7 +113,7 @@ class ETFUniverse:
         df_of_holdings = raw_etf_holdings.set_index('date').groupby('date')['permno'].apply(
             lambda grp: list(grp.value_counts().index))
 
-        end_date = pd.to_datetime('now').date().strftime('%Y-%m-%d')
+        end_date = pd.Timestamp.now().date().strftime('%Y-%m-%d')
         start_date = df_of_holdings.index.min()
 
         full_cal = pd.date_range(start=start_date, end=end_date, freq='D').tz_localize(None)
@@ -135,7 +136,7 @@ class ETFUniverse:
         """
         join cstat and ibes links to current universe df
         """
-        columns = ', '.join(['date', 'uni.permno', 'gvkey', 'liid as iid, ''ticker', 'cusip',
+        columns = ', '.join(['date', 'uni.permno', 'gvkey', 'liid as iid', 'ticker', 'cusip',
                              "CASE WHEN gvkey NOT NULL THEN CONCAT(gvkey, '_', liid) ELSE NULL END as id"])
         from_start = " uni_df as uni "
 
@@ -161,8 +162,15 @@ class ETFUniverse:
             raise ValueError(f"Ticker '{ticker}' is not valid cant map to crsp_portno")
 
         if len(mapped_id) > 1:
+            # getting metadata of the portno's that mtched
+            mapped_funds = self._con.execute(f"""SELECT DISTINCT crsp_portno, fund_name, m_fund, et_flag
+                                            FROM crsp.fund_summary 
+                                            WHERE ticker = '{ticker}' AND
+                                                crsp_portno IS NOT NULL""").fetchdf()
+
             raise ValueError(f"Ticker '{ticker}' mapped to {len(mapped_id)} crsp_portno's {mapped_id}. "
-                             f"Please specify the crsp_portno to build this etf's history")
+                             f"Please specify the crsp_portno to build this etf's history\n" +
+                              mapped_funds.to_string(index=False))
 
         return int(mapped_id[0][0])
 
@@ -216,4 +224,4 @@ def clear_cache():
 
 
 if __name__ == '__main__':
-    print(ETFUniverse().get_universe_df(ticker='ESPO'))
+    print(ETFUniverse().get_universe_df(crsp_portno=1025812))

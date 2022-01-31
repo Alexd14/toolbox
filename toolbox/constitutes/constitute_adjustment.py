@@ -119,7 +119,7 @@ class ConstituteAdjustment:
                    .df)
 
         missing_id_for = raw_uni.index.to_frame()[self.__id_col].isnull().sum() / len(raw_uni)
-        print(f"Universe missing {self.__id_col} for {round(missing_id_for, 3) * 100}% of data points")
+        print(f"Universe missing \"{self.__id_col}\" for {round(missing_id_for * 100, 2)}% of data points")
 
         self.__index_constitutes_factor = raw_uni.index.dropna()
 
