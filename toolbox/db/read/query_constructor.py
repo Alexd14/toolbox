@@ -538,6 +538,18 @@ class QueryConstructor:
         """
         return self.where(f""" data.{column} IS NOT NULL """)
 
+    def rename(self, mapping: Dict[str, str]):
+        """
+        Will rename the columns in the current select statement of the query
+        :param mapping: dict of names to map {'lpermno':'permno', 'liid':'iid'}
+        """
+        for old, new in mapping.items():
+            self._query_string['select'] = self._query_string['select'].replace(old, f'{old} AS {new}')
+            self._query_metadata['fields'].remove(old)
+            self._query_metadata['fields'].append(new)
+
+        return self
+
     def _clear_query_string(self, keep: Iterable[str]) -> None:
         """
         clears all fields in self._query_string except for the fields passed to keep
