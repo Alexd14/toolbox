@@ -4,21 +4,22 @@ from setuptools import find_packages
 
 setup(
     name='factor-toolbox',
-    version='1.1.5',
+    version='1.1.6',
     packages=find_packages(),
     license='MIT',
     description='A simple toolbox to aid in the exploration of potential alpha sources.',
-    author='Alex',
+    author='',
     author_email='',
     url='https://github.com/Alexd14/factor-toolbox',
-    download_url='https://github.com/Alexd14/toolbox/archive/refs/tags/v1.1.5.tar.gz',
+    download_url='https://github.com/Alexd14/toolbox/archive/refs/tags/v1.1.6.tar.gz',
     keywords=['factor', 'equity factor'],
     install_requires=[
         'pandas',
         'pandas_market_calendars',
         'tqdm',
         'numpy',
-        'duckdb'
+        'duckdb',
+        'pyarrow'
     ],
     classifiers=[
         'License :: OSI Approved :: MIT License',

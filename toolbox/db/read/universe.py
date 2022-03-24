@@ -5,7 +5,7 @@ import pandas as pd
 
 from typing import Union
 
-from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO, CACHE_DIRECTORY
+from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO, ETF_UNI_DIRECTORY, BUILT_UNI_DIRECTORY
 from toolbox.db.api.sql_connection import SQLConnection
 
 # this allows compatibility with python 3.6
@@ -19,6 +19,31 @@ MAP_ETF_SYMBOL_ID = {'SPY': 1021980,
                      'IWV': 1025817}
 
 
+def dispatch_universe_path(uni_name, add_quotes=False, sql_con=None) -> str:
+    """
+    gets the path to the given universe.
+    Can pass any universe and will figure out the correct path to the universe.
+    Assumes that the universe name is valid.
+
+    :param uni_name: the name of the universe
+    :param sql_con: a connection to the database
+    :param add_quotes: should we add single quotes around the path?
+    :return: path to the universe
+    """
+    #  user passes a etf to use as universe
+    if 'ETF' in uni_name:
+        out = ETFUniverse(con=sql_con).get_universe_path_parse(uni_name)
+
+    # user passes a built universe
+    else:
+        out = BuiltUniverse().get_universe_path(uni_name)
+
+    if add_quotes:
+        return f"'{out}'"
+
+    return out
+
+
 class ETFUniverse:
     """
     CLass to build universes from etf holdings.
@@ -27,10 +52,10 @@ class ETFUniverse:
 
     def __init__(self, con: SQLConnection = None):
         """
-        :param con: A connection to the database, if not passed then will open a new write connection.
-            if the there is universe creation going on then must pass a write connection
+        If the user would like to class this class mutable times then they must pass a connection to con
+        :param con: A connection to the database, if not passed then will open a new connection.
         """
-        self._con = con if con else SQLConnection()
+        self._con = con if con else SQLConnection(close_key=self.__class__.__name__)
 
     def get_universe_df(self, ticker: str = None, crsp_portno: int = None, start_date: str = '2000',
                         end_date: str = '2023') -> Union[pd.DataFrame, str]:
@@ -84,15 +109,21 @@ class ETFUniverse:
                 'ETF_5648362'
         """
         to_parse = to_parse.upper()
+        param_dict = self._parse_etf_uni_string(to_parse, param_dict={})
+        return self.get_universe_path(**param_dict)
 
-        if 'ETF_' in to_parse:
-            id_etf = to_parse.split('_')[-1]
-            if id_etf.isdigit():
-                return self.get_universe_path(crsp_portno=to_parse.split('_')[-1])
-            else:
-                return self.get_universe_path(ticker=to_parse.split('_')[-1])
-        else:
-            raise ValueError(f"Can't parse {to_parse}")
+    def get_universe_df_parse(self, to_parse, start_date: str = '2000', end_date: str = '2023'):
+        """
+        wrapper that parses a string for get_universe_path, can tell if user passed a symbol or crsp_portno
+        format:
+            ticker:
+                'ETF_SPY'
+            crsp_portno:
+                'ETF_5648362'
+        """
+        param_dict = {'start_date': start_date, 'end_date': end_date}
+        param_dict = self._parse_etf_uni_string(to_parse, param_dict=param_dict)
+        return self.get_universe_df(**param_dict)
 
     def _cache_etf(self, crsp_portno) -> pd.DataFrame:
         """
@@ -109,6 +140,7 @@ class ETFUniverse:
                     permno IS NOT NULL
                """
         raw_etf_holdings = self._con.execute(sql_for_holdings).fetchdf()
+        self._con.close_with_key(close_key=self.__class__.__name__)
 
         df_of_holdings = raw_etf_holdings.set_index('date').groupby('date')['permno'].apply(
             lambda grp: list(grp.value_counts().index))
@@ -136,7 +168,7 @@ class ETFUniverse:
         """
         join cstat and ibes links to current universe df
         """
-        columns = ', '.join(['date', 'uni.permno', 'gvkey', 'liid as iid', 'ticker', 'cusip',
+        columns = ', '.join(['date', 'uni.permno', 'lpermco as permco', 'gvkey', 'liid as iid', 'ticker', 'cusip',
                              "CASE WHEN gvkey NOT NULL THEN CONCAT(gvkey, '_', liid) ELSE NULL END as id"])
         from_start = " uni_df as uni "
 
@@ -156,21 +188,22 @@ class ETFUniverse:
                                          FROM crsp.fund_summary 
                                          WHERE ticker = '{ticker}' AND
                                             crsp_portno IS NOT NULL""").fetchall()
-        self._con.close()
 
         if len(mapped_id) == 0:
+            self._con.close_with_key(close_key=self.__class__.__name__)
             raise ValueError(f"Ticker '{ticker}' is not valid cant map to crsp_portno")
 
-        if len(mapped_id) > 1:
+        if len({x[0] for x in mapped_id}) > 1:
             # getting metadata of the portno's that mtched
             mapped_funds = self._con.execute(f"""SELECT DISTINCT crsp_portno, fund_name, m_fund, et_flag
                                             FROM crsp.fund_summary 
                                             WHERE ticker = '{ticker}' AND
                                                 crsp_portno IS NOT NULL""").fetchdf()
+            self._con.close_with_key(close_key=self.__class__.__name__)
 
             raise ValueError(f"Ticker '{ticker}' mapped to {len(mapped_id)} crsp_portno's {mapped_id}. "
                              f"Please specify the crsp_portno to build this etf's history\n" +
-                              mapped_funds.to_string(index=False))
+                             mapped_funds.to_string(index=False))
 
         return int(mapped_id[0][0])
 
@@ -210,18 +243,78 @@ class ETFUniverse:
         """
         :return: path to the cached file
         """
-        return f'{CACHE_DIRECTORY}/etf_uni_{crsp_portno}.parquet'
+        return f'{ETF_UNI_DIRECTORY}/etf_uni_{crsp_portno}.parquet'
+
+    @staticmethod
+    def _parse_etf_uni_string(to_parse: str, param_dict: dict) -> dict:
+        """
+        adds 'ticker' or 'crsp_portno' a parameter dict
+        :params to_parse:
+        :params param_dict: dict which we will add 'ticker' or 'crsp_portno' to
+        :return: param_dict with 'ticker' or 'crsp_portno' added
+        """
+        to_parse = to_parse.upper()
+        if 'ETF_' in to_parse:
+            id_etf = to_parse.split('_')[-1]
+            if id_etf.isdigit():
+                param_dict['crsp_portno'] = to_parse.split('_')[-1]
+            else:
+                param_dict['ticker'] = to_parse.split('_')[-1]
+        else:
+            raise ValueError(f"Can't parse {to_parse}")
+
+        return param_dict
 
 
-def clear_cache():
+class BuiltUniverse:
     """
-    Clears all parquet files in the CACHE_DIRECTORY path
+    Gets and validates path to a built universe
     """
-    files = glob.glob(f'{CACHE_DIRECTORY}/*.parquet')
+
+    def get_universe_path(self, uni_name) -> str:
+        """
+        gets the path to the parquet file of the given universe
+        :param uni_name: the name of the universe ex: CRSP_US_1000
+        :return: the full path to the given universe
+        :raises: ValueError if given uni_name is invalid
+        """
+        self._ensure_universe_exists(uni_name)
+        return self._get_path(uni_name)
+
+    def _ensure_universe_exists(self, uni_name):
+        """
+        checks to see if the universe exisis
+        """
+        if not os.path.isfile(self._get_path(uni_name)):
+            raise ValueError(f'Universe {uni_name} does not exist!')
+
+    @staticmethod
+    def _get_path(uni_name):
+        """
+        creates what the path should be to the universe file
+        """
+        return f'{BUILT_UNI_DIRECTORY}/{uni_name.upper()}.parquet'
+
+
+def clear_etf_universes():
+    """
+    Clears all parquet files in the ETF_UNI_DIRECTORY path
+    """
+    files = glob.glob(f'{ETF_UNI_DIRECTORY}/*.parquet')
     for f in files:
         os.remove(f)
-    print('Cleared Cache')
+    print('Cleared ETF Universes')
+
+
+def clear_built_universes():
+    """
+    Clears all parquet files in the BUILT_UNI_DIRECTORY path
+    """
+    files = glob.glob(f'{BUILT_UNI_DIRECTORY}/*.parquet')
+    for f in files:
+        os.remove(f)
+    print('Cleared Built Universes')
 
 
 if __name__ == '__main__':
-    print(ETFUniverse().get_universe_df(crsp_portno=1025812))
+    print(ETFUniverse().get_universe_df_parse(to_parse='ETF_1021980', start_date='2017'))

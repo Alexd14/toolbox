@@ -5,7 +5,8 @@ import hashlib
 import pandas as pd
 
 from toolbox.db.api.sql_connection import SQLConnection
-from toolbox.db.read.etf_universe import ETFUniverse
+from toolbox.db.read.cached_query import CachedQuery
+from toolbox.db.read.universe import dispatch_universe_path
 from toolbox.db.settings import DB_ADJUSTOR_FIELDS
 
 # try to import sqlparse, but not required
@@ -29,12 +30,15 @@ class QueryConstructor:
         possibly cache the data in a feather file
     """
 
-    def __init__(self, sql_con: SQLConnection = None, freq: Optional[str] = 'D'):
+    def __init__(self, sql_con: SQLConnection = None, cache: bool = True, freq: Optional[str] = 'D'):
         """
         :param sql_con: the connection to the database, if non is passed then will use default SQLConnection
+        :param cache: should we check the cache and see if this query has been executed before?
+            and should we cache this query?
         :param freq: frequency for the period, if None then return a Timestamp
         """
-        self._con: SQLConnection = sql_con if sql_con else SQLConnection()
+        self._con: SQLConnection = sql_con if sql_con else SQLConnection(close_key=self.__class__.__name__)
+        self._cache = cache
 
         self._query_string = {'select': '', 'from': '', 'where': '', 'group_by': '', 'window': '', 'order_by': ''}
         self._df_options = {'freq': freq, 'index': []}
@@ -75,6 +79,7 @@ class QueryConstructor:
         """
         returns the fields(columns) of a query
         """
+        # does not return date
         return self._query_metadata['fields'] + [
             self._query_metadata['asset_id']] if self._query_metadata['asset_id'] else []
 
@@ -83,9 +88,22 @@ class QueryConstructor:
         """
         executes the sql query that the user has created
         """
-        self._register_universe()
-        raw_df = self._con.execute(self.raw_sql).fetchdf()
-        self._con.close()
+        raw_sql = self.raw_sql
+
+        # getting the cached file
+        cq = CachedQuery(raw_sql) if self._cache else None
+        if self._cache and cq.is_query_cached():
+            raw_df = cq.get_cached_query_df()
+        else:
+            self._register_universe()
+            raw_df = self._con.execute(raw_sql).fetchdf()
+
+        # caching the query
+        if self._cache and not cq.is_query_cached():
+            cq.cache_query(raw_df)
+
+        # if the user did not pass the connection then close it
+        self._con.close_with_key(self.__class__.__name__)
 
         return self._make_df_changes(raw_df)
 
@@ -110,13 +128,18 @@ class QueryConstructor:
 
     def _register_universe(self) -> None:
         """
-        regesters the tables in self._dict_asset_tables
+        Registers the tables in self._dict_asset_tables,
+        Since table names are hashes if table exists then will not register
         :return: None
         """
         if not self._dict_asset_tables:
             return
 
+        current_tables = set(self._con.execute('PRAGMA show_tables').df()['name'])
+
         for name, tbl in self._dict_asset_tables.items():
+            if name[5:] in current_tables or name in current_tables:
+                continue
             if isinstance(tbl, str):
                 self._con.execute(tbl)
             elif isinstance(tbl, pd.DataFrame):
@@ -151,7 +174,7 @@ class QueryConstructor:
 
         self._df_options['index'] = ['date', search_by]
         self._query_metadata['asset_id'] = search_by
-        self._query_metadata['fields'] = fields
+        self._query_metadata['fields'] = fields + ['date']
 
         return self
 
@@ -181,12 +204,12 @@ class QueryConstructor:
 
         self._df_options['index'] = [search_by]
         self._query_metadata['asset_id'] = search_by
-        self._query_metadata['fields'] = fields + ['min_date', 'max_date']
+        self._query_metadata['fields'] = fields + ['min_date', 'max_date'] + ['date']
 
         return self
 
     def query_universe_table(self, table: str, fields: List[str], start_date: str, end_date: str,
-                             index: List[str] = None, keep_date_col: bool = True):
+                             index: List[str] = None, keep_date_col: bool = True, override_sql_con: bool = False):
         """
         makes sql query for a timeseries of a universe table
         :param table: the universe table to query
@@ -195,6 +218,8 @@ class QueryConstructor:
         :param end_date: last date to query on
         :param index: what should the index of the returned frame be
         :param keep_date_col: should the date column be returned?
+        :param override_sql_con: should we pass dispatch_universe_path a new default connection?
+            set this to true when QueryConstructor is given a :memory: connection
         :return: self
         """
         query_fields = fields
@@ -204,8 +229,13 @@ class QueryConstructor:
         select_col_sql = self._create_columns_to_select_sql(fields=query_fields, adjust=False, tbl_alias='')
 
         self._query_string['select'] = select_col_sql
-        self._query_string['from'] = (f"'{ETFUniverse().get_universe_path_parse(table)}'" if 'ETF' in table
-                                      else f"universe.{table}")
+
+        # making a new connection if override_sql_con
+        # will let the universe creators make now connections to cache universes if :memory: connection
+        # is passed to QueryConstructor
+        universe_con = None if override_sql_con else self._con
+
+        self._query_string['from'] = dispatch_universe_path(table, add_quotes=True, sql_con=universe_con)
         self._query_string['where'] = f"""date >= '{start_date}' AND date <= '{end_date}'"""
 
         if index:
@@ -214,7 +244,7 @@ class QueryConstructor:
         return self
 
     def query_no_date_table(self, table: str, fields: List[str], assets: Union[Iterable[any], str],
-                            search_by: str):
+                            search_by: str, start_date: str = None, end_date: str = None):
         """
         get data from a table with no date column
         :param table: the table we are searching must be prefixed by the schema
@@ -224,7 +254,8 @@ class QueryConstructor:
         :return: self
         """
         select_col_sql = self._create_columns_to_select_sql(table=table, fields=fields + [search_by], adjust=False)
-        self._create_asset_filter_sql(assets=assets, search_by=search_by)
+        self._create_asset_filter_sql(assets=assets, search_by=search_by, timeseries_table=table, start_date=start_date,
+                                      end_date=end_date)
 
         self._query_string['select'] = select_col_sql
         self._query_string['from'] = f"""{table} AS data JOIN {self._asset_table} AS uni 
@@ -291,19 +322,15 @@ class QueryConstructor:
                                 """
 
         wanted_outer_cols = self._create_columns_to_select_sql(
-            fields=self._query_metadata['fields'] + ['date', self._query_metadata['asset_id']], adjust=False)
+            fields=self._query_metadata['fields'] + [self._query_metadata['asset_id']], adjust=False)
 
         wanted_inner_cols = self._create_columns_to_select_sql(
             fields=self._query_metadata['fields'] + [self._query_metadata['asset_id']], adjust=False)
-        # wanted_inner_cols = re.sub('data\.,|, data\.$', '', wanted_inner_cols)
-
-        old_col_outter = f', old_date, old_{asset_id}' if keep_old else ''
-        old_col_inner = f', data.date as old_date, data.{asset_id} as old_{asset_id}' if keep_old else ''
 
         raw_query = self.raw_sql
-        self._query_string['select'] = f"""{wanted_outer_cols} {old_col_outter}"""
+        self._query_string['select'] = f"""{wanted_outer_cols}"""
         self._query_string['from'] = f"""
-                        (SELECT cal.date, cal.{asset_id}, {wanted_inner_cols} {old_col_inner}
+                        (SELECT cal.date, cal.{asset_id}, {wanted_inner_cols}
                         FROM
                         ({raw_query}) AS data RIGHT JOIN {full_date_id_sql} 
                             ON data.{asset_id} = cal.{asset_id} and data.date = cal.date) as data
@@ -328,37 +355,19 @@ class QueryConstructor:
 
         return self
 
-    def _forward_fill(self, fill_limit: Optional[int] = None):
+    def _forward_fill(self, fill_limit: int):
         """
         forward fills every column in a table
         :param fill_limit: max amount of fills in a row, CURRENTLY NOT WORKING
         """
+        self.nest(rewrite_select=False)
         asset_id = self._query_metadata['asset_id']
-
-        self._query_string['select'] += f""", COUNT(CASE WHEN data.old_{asset_id} IS NOT NULL THEN 1 END) 
-                                            OVER (ORDER BY data.{asset_id}, "date" ROWS BETWEEN UNBOUNDED PRECEDING 
-                                            AND CURRENT ROW) AS grouper """
-
-        self.nest()
-
-        row_num = ''
-        if fill_limit:
-            row_num = f""", row_number() OVER (PARTITION BY grouper, {self._query_metadata['asset_id']} 
-                    ORDER BY date) as row_num"""
-
-        query_str = ', '.join([f"MIN(data.{col}) OVER ffill as {col}" for col in self._query_metadata['fields']])
-        self._query_string['select'] = f"""data.date, data.{asset_id}, {query_str} {row_num}"""
-        self._query_string['window'] = f"""ffill AS (PARTITION BY {asset_id}, grouper)"""
-
-        self._clear_query_string(['select', 'from', 'window'])
-
-        if fill_limit:
-            self._query_string['from'] = f"""({self.raw_sql}) as data"""
-            self._query_string['select'] = self._create_columns_to_select_sql(
-                fields=self._query_metadata['fields'] + [self._query_metadata['asset_id'], 'date'], adjust=False)
-            self._query_string['where'] = f"""row_num <= {fill_limit}"""
-            self._clear_query_string(['from', 'select', 'where'])
-
+        ffill_code = ', '.join([f'LAST_VALUE({col} IGNORE NULLS) OVER ffill as {col}'
+                                for col in self._query_metadata['fields']])
+        self._query_string['select'] = f"""date, {asset_id}, {ffill_code}"""
+        self._query_string['window'] = f"""ffill AS (PARTITION BY data.{asset_id} ORDER BY data.date 
+                                        RANGE BETWEEN INTERVAL {fill_limit} DAYS PRECEDING 
+                                        AND INTERVAL 0 DAYS FOLLOWING)"""
         return self
 
     def shift(self, column: str, days: int, new_name: Optional[str] = None):
@@ -448,8 +457,8 @@ class QueryConstructor:
 
         fields = self._query_metadata['fields'] + [self._query_metadata['asset_id']]
 
-        if include_date:
-            fields.append('date')
+        if not include_date:
+            fields.remove('date')
 
         if rewrite_select:
             self._query_string['select'] = self._create_columns_to_select_sql(fields=fields, adjust=False)
@@ -481,6 +490,12 @@ class QueryConstructor:
                          link_start_col: str = None, link_end_col: str = None, extra_filter: str = ''):
         """
         joins a linker table onto the current query
+
+        # CRSP CSTAT Example
+                   .add_linker_table('link.crsp_cstat_link', join_on={'gvkey': 'gvkey'}, link_columns=['lpermno'],
+                            link_start_col='linkdt', link_end_col='linkenddt',
+                            extra_filter="(linktype = 'LU' OR linktype = 'LC')")
+
         :param link_table:the table containing the linking information
         :param join_on: dict of the columns to join {timeseries_tbl_col : link_col}
         :param link_columns: the columns to get from the linking table
@@ -497,7 +512,8 @@ class QueryConstructor:
         self._query_string['from'] += f""" LEFT JOIN {link_table} AS link ON ({on_clause} """
 
         if link_start_col and link_end_col:
-            self._query_string['from'] += f""" AND data.date > link.{link_start_col} AND data.date < link.{link_end_col}"""
+            self._query_string[
+                'from'] += f""" AND data.date > link.{link_start_col} AND data.date < link.{link_end_col}"""
 
         self._query_string['from'] += f"""{' AND ' + extra_filter if extra_filter else ''})"""
 
@@ -550,6 +566,52 @@ class QueryConstructor:
 
         return self
 
+    def add_date_to_fa_ff(self, link_to_permno=True, olny_keep_primary=True, link_cols=None):
+        """
+        makes the date column usable to run tests on with fundemental annual data
+        :param link_to_permno: should we add a link to permno?
+        :param olny_keep_primary: should we olny keep primary shares if linking to permno
+        """
+        if link_cols is None:
+            link_cols = ['lpermno']
+
+        self.rename({'date': 'og_cstat_date'}).add_to_select("last_day(date_trunc('year', date) "
+                                                             "+ INTERVAL 1 YEAR + INTERVAL 5 MONTH) as date",
+                                                             add_field='date')
+
+        if link_to_permno:
+            # olny using primary share class in linking
+            (self.add_linker_table('link.crsp_cstat_link', join_on={'gvkey': 'gvkey'},
+                                   link_columns=link_cols, link_start_col='linkdt',
+                                   link_end_col='linkenddt',
+                                   extra_filter="(linktype = 'LU' OR linktype = 'LC') "
+                                                "and (linkprim ='C' or linkprim='P') " if olny_keep_primary else "")
+             .rename({'lpermno': 'permno'}))
+
+        return self
+
+    def join_funda_to_table_ff(self, cstat_table, on: Dict[str, str], tbl_name: str, join_type: str = 'INNER',
+                               nest: bool = True):
+        """
+        Joins a compustat funemental annual table onto another table.
+        Will use the famma french way of making the join dates.
+        New column datadate is the old date column of the cstat
+        :param cstat_table: QueryConstructor of the cstat table we want to join
+        :param on: fields to join on, the key is the current QueryConstructor value is the other QueryConstructor
+            will automaticly add date
+        :param tbl_name: the name of the other table
+        :param join_type: the type of join to do
+        :param nest: should we nest self before joining the two queries
+        """
+
+        cstat_table = cstat_table.resample('NYSE', fill_limit=390)
+        if 'date' not in on.values():
+            on['date'] = 'date'
+
+        self.join(other=cstat_table, on=on, tbl_name=tbl_name, join_type=join_type, nest=nest)
+
+        return self
+
     def _clear_query_string(self, keep: Iterable[str]) -> None:
         """
         clears all fields in self._query_string except for the fields passed to keep
@@ -580,29 +642,21 @@ class QueryConstructor:
         :return: string of the table name that the wanted assets are in
         """
 
-        asset_table = f'universe.{assets}'
-        # checking to see if the user wants all columns
-        if isinstance(assets, str) and assets == '*':
-            if timeseries_table is None:
-                raise ValueError('Must pass a timeseries_table if assets = \'*\'')
+        if isinstance(assets, str):
+            # user wants all assets
+            if '*' == assets:
+                if timeseries_table is None:
+                    raise ValueError('Must pass a timeseries_table if assets = \'*\'')
+                asset_table = timeseries_table
 
-            asset_table = timeseries_table
+            else:
+                #  user passes a etf to use as universe
+                asset_table = dispatch_universe_path(uni_name=assets, add_quotes=True, sql_con=self._con)
 
-        #  user passes a etf to use as universe
-        if isinstance(assets, str) and 'ETF' in assets:
-            path = ETFUniverse(con=self._con).get_universe_path_parse(assets)
-            tbl_name = assets
+            tbl_name = '_' + hashlib.sha224(str(assets + str(timeseries_table) + search_by).encode()).hexdigest()
             table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
-                                    FROM '{path}'
-                                    WHERE date >= '{start_date}' AND date <= '{end_date}')"""
-            tbl_name = f'temp.{tbl_name}'
-
-        # user passes a built universe
-        elif isinstance(assets, str):
-            tbl_name = '_' + hashlib.sha224(str(assets + str(timeseries_table)).encode()).hexdigest()
-            table = f"""CREATE TEMP TABLE {tbl_name} AS (SELECT DISTINCT {search_by}
-                        FROM {asset_table}
-                        WHERE date >= '{start_date}' AND date <= '{end_date}')"""
+                                        FROM {asset_table}
+                                        WHERE date >= '{start_date}' AND date <= '{end_date}')"""
             tbl_name = f'temp.{tbl_name}'
 
         # We have an iterable of assets
@@ -614,48 +668,8 @@ class QueryConstructor:
         else:
             raise ValueError(f'Assets type: {type(assets)} not recognised')
 
-        # table = self._add_uni_args(assets, table)
-
         self._asset_table = tbl_name
         self._dict_asset_tables[tbl_name] = table
-
-        #     def _add_uni_args(self, assets: any, table: any):
-        #         """
-        #         Parses string arguments for performing alterations to the universe before any SQL is executed
-        #         :param assets: the assets passed by the user
-        #         :param table: the current query to make the universe table
-        #
-        #         possible args:
-        #             "CRSP_US_1000 --link"
-        #             Will link to ccm llinker table and ibes linker table
-        #         """
-        #         if (not isinstance(assets, str)) or '--' in assets:
-        #             return table
-        #
-        #         args = assets.split('--')[1:]
-        #
-        #         for arg in args:
-        #             if 'link' in arg:
-        #                 self._add_link_to_uni(arg, table)
-        #             else:
-        #                 raise ValueError(f'Command {arg} is not recognised')
-        #
-        #     def _add_link_to_uni(self, arg:str, table: str):
-        #         """
-        #         "CRSP_US_1000 --link"
-        #          Will link to ccm llinker table and ibes linker table
-        #          Assumes we have permno in universe
-        #         """
-        #
-        #         link_tbl_from = arg.split(' ')[1]
-        #         linto_tbl_to =
-        #
-        #         regex_ptn = r'FROM(.*?)WHERE'
-        #         passed_from = re.search(regex_ptn, table).group(1)
-        #
-        #         new_from = f""" {passed_from} LEFT JOIN """
-        #
-        # passed_from += """ JOIN """
 
     def _create_columns_to_select_sql(self, fields: Iterable[str], adjust: bool, table: str = None,
                                       tbl_alias: str = 'data') -> str:

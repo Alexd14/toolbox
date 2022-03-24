@@ -6,7 +6,11 @@ from .db.read.query_constructor import QueryConstructor
 from .db.api.sql_connection import SQLConnection
 from .db.read.db_functions import table_info
 from .db.write.create_tables import IngestDataBase
-from .db.read.etf_universe import ETFUniverse, clear_cache
+from .db.read.universe import (ETFUniverse,
+                               clear_etf_universes,
+                               clear_built_universes,
+                               BuiltUniverse,
+                               dispatch_universe_path)
 
 __all__ = [
     'ConstituteAdjustment',
@@ -19,6 +23,8 @@ __all__ = [
     'table_info',
     'IngestDataBase',
     'ETFUniverse',
-    'clear_cache'
+    'clear_etf_universes',
+    'clear_built_universes',
+    'BuiltUniverse',
+    'dispatch_universe_path'
 ]
-

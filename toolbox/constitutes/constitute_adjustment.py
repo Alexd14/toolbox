@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 import duckdb
 import pandas as pd
 
+from toolbox.db.api.sql_connection import SQLConnection
 from toolbox.db.read.query_constructor import QueryConstructor
 from toolbox.utils.handle_data import handle_duplicates
 
@@ -103,20 +104,26 @@ class ConstituteAdjustment:
         self.__index_constitutes_factor = pd.concat(indexes_factor).index.set_names(['date', self.__id_col])
         self.__index_constitutes_pricing = pd.concat(indexes_pricing).index.set_names(['date', self.__id_col])
 
-    def add_index_info_from_db(self, universe_table: str, start_date: str, end_date: str) -> None:
+    def add_index_info_from_db(self, assets: str, start_date: str, end_date: str, sql_con=None) -> None:
         """
         Same as add_index_info but takes in index info from the database,
         only sets index information for factors, self.__index_constitutes_factor
-        :param universe_table: the table to query the db for
+        :param assets: the table to query the db for
         :param start_date: The first date we want to get data for string in %Y-%m-%d
         :param end_date: The last first date we want to get data for string in %Y-%m-%d
+        :param sql_con: a connection to the sql database if not provided then will use default connection
         :return: None
         """
-        raw_uni = (QueryConstructor()
-                   .query_universe_table(universe_table, fields=[self.__id_col], start_date=start_date,
-                                         end_date=end_date, index=['date', self.__id_col])
-                   .set_freq(None)
+        over_con = sql_con is None
+        if sql_con is None:
+            sql_con = SQLConnection(':memory:', close_key=self.__class__.__name__)
+
+        raw_uni = (QueryConstructor(sql_con=sql_con, cache=False, freq=None)
+                   .query_universe_table(assets, fields=[self.__id_col], start_date=start_date,
+                                         end_date=end_date, index=['date', self.__id_col], override_sql_con=over_con)
                    .df)
+
+        sql_con.close_with_key(self.__class__.__name__)
 
         missing_id_for = raw_uni.index.to_frame()[self.__id_col].isnull().sum() / len(raw_uni)
         print(f"Universe missing \"{self.__id_col}\" for {round(missing_id_for * 100, 2)}% of data points")

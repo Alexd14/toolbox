@@ -1,6 +1,6 @@
-from toolbox.db.read.etf_universe import clear_cache
+from toolbox.db.read.universe import clear_built_universes, clear_etf_universes
 from toolbox.db.write.create_tables import IngestDataBase
-from toolbox.db.write.make_universes import compustat_us_universe, crsp_us_universe
+from toolbox.db.write.make_universes import clear_master_ranking_table, compustat_us_universe, crsp_us_universe
 
 
 def rebuild_db(drop: bool = False):
@@ -15,9 +15,11 @@ def rebuild_db(drop: bool = False):
         {
             'table': 'crsp_cstat_link',
             'schema': 'link',
-            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/rc9ie3efp9e3opdf.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/Compustat CRSP Link 20220320.gz',
             'custom': """
                         UPDATE link.crsp_cstat_link SET LINKENDDT=20501231 WHERE LINKENDDT = 'E';
+                        ALTER TABLE link.crsp_cstat_link ADD COLUMN id VARCHAR;
+                        ALTER TABLE link.crsp_cstat_link ALTER id SET DATA TYPE VARCHAR USING CONCAT(gvkey, '_', liid);
                       """,
             'alter_type': {'LINKDT': ['timestamp', '%Y%m%d'],
                            'LINKENDDT': ['timestamp', '%Y%m%d'],
@@ -31,7 +33,7 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 100,
             'schema': 'link',
             'table': 'crsp_ibes_link',
-            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/luhmjdovofexjxwg.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/Linking Tables/IBES CRSP Link 20220320.gz',
             'alter_type': {'sdate': ['timestamp', '%Y%m%d'],
                            'edate': ['timestamp', '%Y%m%d']},
             'index':
@@ -48,7 +50,7 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 2_000_000,
             'table': 'security_daily',
             'schema': 'crsp',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Security Files/Daily Stock File/ndrekzi6lud82dpo.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Security Files/Daily Stock File/Daily Stock File 29251231-20211231.gz',
             'rename': {},
             'alter_type': {'date': ['timestamp', '%Y%m%d'],
                            'nameendt': ['timestamp', '%Y%m%d'],
@@ -65,7 +67,7 @@ def rebuild_db(drop: bool = False):
         {
             'table': 'stock_header_info',
             'schema': 'crsp',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Security Files/Stock Header Info/2xzpc1ww0dih4jk0.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Security Files/Stock Header Info/Stock Header Info 202112.csv.gz',
             'custom': """
                         UPDATE crsp.stock_header_info SET begvol=NULL WHERE begvol = 'Z';
                         UPDATE crsp.stock_header_info SET endvol=NULL WHERE endvol = 'Z';
@@ -84,7 +86,7 @@ def rebuild_db(drop: bool = False):
         {
             'table': 'distributions',
             'schema': 'crsp',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Events/Distribution/y0vypfj8geyzhs0l.csv',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Events/Distribution/Distribution 292512-202112.gz',
             'alter_type': {'dclrdt': ['timestamp', '%Y%m%d'],
                            'rcrddt': ['timestamp', '%Y%m%d'],
                            'paydt': ['timestamp', '%Y%m%d'],
@@ -92,13 +94,21 @@ def rebuild_db(drop: bool = False):
             'rename': {},
             'index': [{'name': 'crsp_dist_permno_idx', 'column': 'permno'}]
         },
-        {  # this has non valid UTF8 so had to adjust file
-            'rows_to_interpret': 500_000,
+        {
+            'rows_to_interpret': 3_000_000,
+            'table': 'names',
+            'schema': 'crsp',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Annual Update/Stock : Events/Names/Names 202112.gz',
+            'alter_type': {'nameendt': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'crsp_name_permno_idx', 'column': 'date'},
+                      {'name': 'crsp_name_ticker_idx', 'column': 'ticker'}]
+        },
+        {
+            'rows_to_interpret': 2_000_000,
             'table': 'fund_summary',
             'schema': 'crsp',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Fund Summary/Fund Summary 196912-202109.gz',
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Fund Summary/Fund Summary 196912-202112 - no mng_name.gz',
             'rename': {'caldt': 'date'},
-            # 'where': """ et_flag = 'F' """,
             'alter_type': {'date': ['timestamp', '%Y%m%d'],
                            'first_offer_dt': ['timestamp', '%Y%m%d'],
                            'mgr_dt': ['timestamp', '%Y%m%d'],
@@ -114,11 +124,10 @@ def rebuild_db(drop: bool = False):
                       {'name': 'crsp_mffs_ticker_idx', 'column': 'ticker'}]
         },
         {
-            'rows_to_interpret': 2_000_000,
+            'rows_to_interpret': 3_000_000,
             'table': 'portfolio_holdings',
             'schema': 'crsp',
-            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Portfolio Holdings/Portfolio Holdings 200101-202109.gz',
-            # 'where': """ crsp_portno in (SELECT distinct crsp_portno FROM crsp.fund_summary) """,
+            'file_path': '/Users/alex/Desktop/WRDS/CRSP/Quarterly Update/Mutual Fund/Portfolio Holdings/Portfolio Holdings 200101-202112.gz',
             'rename': {'report_dt': 'date'},
             'alter_type': {'date': ['timestamp', '%Y%m%d'],
                            'eff_dt': ['timestamp', '%Y%m%d'],
@@ -132,27 +141,43 @@ def rebuild_db(drop: bool = False):
         # Compustat
         #
         {
-            'table': 'fundamental_annual',
+            'table': 'funda',
             'schema': 'cstat',
-            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Fundementals Annual/gkm6i8iuxd46uuw1.csv',
-            'rename': {'pdate': 'date'},
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Fundementals Annual/Fundementals Annual 195006-202202.gz',
+            'rename': {'datadate': 'date'},
             'alter_type': {'date': ['timestamp', '%Y%m%d'],
                            'DLDTE': ['timestamp', '%Y%m%d'],
                            'IPODATE ': ['timestamp', '%Y%m%d'],
                            'APDEDATE': ['timestamp', '%Y%m%d'],
-                           'FDATE': ['timestamp', '%Y%m%d']},
+                           'FDATE': ['timestamp', '%Y%m%d'],
+                           'PDATE': ['timestamp', '%Y%m%d']},
             'index': [{'name': 'cstat_fa_date_idx', 'column': 'date'},
                       {'name': 'cstat_fa_gvkey_idx', 'column': 'gvkey'}]
         },
         {
-            'rows_to_interpret': 500_000,
+            'table': 'fundq',
+            'schema': 'cstat',
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Fundemental Quartely/Fundementals Quartely 196301-202203.gz',
+            'rename': {'datadate': 'date'},
+            'alter_type': {'date': ['timestamp', '%Y%m%d'],
+                           'DLDTE': ['timestamp', '%Y%m%d'],
+                           'IPODATE ': ['timestamp', '%Y%m%d'],
+                           'APDEDATEQ': ['timestamp', '%Y%m%d'],
+                           'FDATEQ': ['timestamp', '%Y%m%d'],
+                           'PDATEQ': ['timestamp', '%Y%m%d'],
+                           'RDQ': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'cstat_fq_date_idx', 'column': 'date'},
+                      {'name': 'cstat_fq_gvkey_idx', 'column': 'gvkey'}]
+        },
+        {
+            'rows_to_interpret': 2_000_000,
             'table': 'security_daily',
             'schema': 'cstat',
-            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/Security Daily 19831231-20220124.csv.gz',
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Security Daily/Security Daily 20000101-20220323.csv.gz',
             'custom': """
                         ALTER TABLE cstat.security_daily ADD COLUMN id VARCHAR;
                         ALTER TABLE cstat.security_daily ALTER id SET DATA TYPE VARCHAR USING CONCAT(gvkey, '_', iid);
-                        ALTER TABLE cstat.security_daily DROP BUSDESC;
+                        -- ALTER TABLE cstat.security_daily DROP BUSDESC;
                       """,
             'rename': {'datadate': 'date'},
             'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
@@ -172,6 +197,27 @@ def rebuild_db(drop: bool = False):
                       {'name': 'cstat_sd_id_idx', 'column': 'id'}]
         },
 
+        {
+            'rows_to_interpret': 200_000,
+            'table': 'short_interest',
+            'schema': 'cstat',
+            'file_path': '/Users/alex/Desktop/WRDS/Compustat - Capital IQ/Compustat/North America/Supplemental Short Intrest File/Supplemental Short Intrest File 197301-202203.gz',
+            'custom': """
+                        -- id is being read as int so have to make varchar and pad 
+                        ALTER TABLE cstat.short_interest ALTER iid SET DATA TYPE VARCHAR USING 
+                            CASE WHEN iid < 10 THEN CONCAT('0', iid) ELSE iid END;
+                        ALTER TABLE cstat.short_interest ADD COLUMN id VARCHAR;
+                        ALTER TABLE cstat.short_interest ALTER id SET DATA TYPE VARCHAR USING CONCAT(gvkey, '_', iid);
+                        """,
+            'rename': {'datadate': 'date'},
+            'alter_type': {'date': ['timestamp', '%Y%m%d'],
+                           'SPLITADJDATE': ['timestamp', '%Y%m%d']},
+            'index': [{'name': 'cstat_si_date_idx', 'column': 'date'},
+                      {'name': 'cstat_si_gvkey_idx', 'column': 'gvkey'},
+                      {'name': 'cstat_si_iid_idx', 'column': 'iid'},
+                      {'name': 'cstat_si_id_idx', 'column': 'id'}]
+        },
+
         #
         # WRDS
         #
@@ -180,7 +226,7 @@ def rebuild_db(drop: bool = False):
             'rows_to_interpret': 50_000,
             'schema': 'wrds',
             'table': 'firm_ratios',
-            'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20220123.csv.gz',
+            'file_path': '/Users/alex/Desktop/WRDS/Finical Ratio Suite by WRDS/Finanical Ratios /IBES Financial Ratios By Firm Level WRDS/Financial Ratios IBES 19700131-20220307.gz',
             'rename': {'public_date': 'date'},
             'alter_type': {'adate': ['timestamp', '%Y%m%d'],
                            'qdate': ['timestamp', '%Y%m%d'],
@@ -190,97 +236,103 @@ def rebuild_db(drop: bool = False):
                  {'name': 'wrds_firm_permno_idx', 'column': 'permno'},
                  {'name': 'wrds_firm_gvkey_idx', 'column': 'gvkey'}]
         },
-        {
-            'rows_to_interpret': 50_000,
-            'schema': 'wrds',
-            'table': 'subsidiary',
-            'file_path': '/Users/alex/Desktop/WRDS/Subsidary Data By WRDS/Company Subsidiaries/WRDS Company Subidiary Data (Beta) 199312-202004.gz',
-            'rename': {'SECPDATE': 'date'},
-            'alter_type': {'FDATE': ['timestamp', '%Y%m%d'],
-                           'RDATE': ['timestamp', '%Y%m%d'],
-                           'date': ['timestamp', '%Y%m%d']},
-            'index':
-                [{'name': 'wrds_sub_date_idx', 'column': 'date'},
-                 {'name': 'wrds_sub_gvkey_idx', 'column': 'gvkey'}]
-        },
+
+        # {
+        #     'rows_to_interpret': 50_000,
+        #     'schema': 'wrds',
+        #     'table': 'subsidiary',
+        #     'file_path': '/Users/alex/Desktop/WRDS/Subsidary Data By WRDS/Company Subsidiaries/WRDS Company Subidiary Data (Beta) 199312-202004.gz',
+        #     'rename': {'SECPDATE': 'date'},
+        #     'alter_type': {'FDATE': ['timestamp', '%Y%m%d'],
+        #                    'RDATE': ['timestamp', '%Y%m%d'],
+        #                    'date': ['timestamp', '%Y%m%d']},
+        #     'index':
+        #         [{'name': 'wrds_sub_date_idx', 'column': 'date'},
+        #          {'name': 'wrds_sub_gvkey_idx', 'column': 'gvkey'}]
+        # },
 
         #
         # IBES
         #
 
-        {
-            'rows_to_interpret': 5000,
-            'table': 'summary_price_target',
-            'schema': 'ibes',
-            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Price Target/lyrvpqbb4tg2lbv0.csv',
-            'rename': {'STATPERS': 'date'},
-            'alter_type': {'DATE': ['timestamp', '%Y%m%d']},
-            'index': [{'name': 'ibes_spt_date_idx', 'column': 'date'},
-                      {'name': 'ibes_spt_ticker_idx', 'column': 'ticker'},
-                      {'name': 'ibes_spt_usfirm_idx', 'column': 'usfirm'},
-                      {'name': 'ibes_spt_curr_idx', 'column': 'curr'}]
-        },
-        {
-            'rows_to_interpret': 50000,
-            'table': 'summary_statistics',
-            'schema': 'ibes',
-            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Summary Statistics/1fhrqwpqzncqbdp3.csv',
-            'rename': {'STATPERS': 'date'},
-            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
-                           'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
-                           'FPEDATS': ['timestamp', '%Y%m%d']},
-            'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
-                      {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
-                      {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
-                      {'name': 'ibes_ss_currcode_idx', 'column': 'curcode'},
-                      {'name': 'ibes_ss_measure_idx', 'column': 'measure'}]
-        },
-        {
-            'rows_to_interpret': 50000,
-            'table': 'detail',
-            'schema': 'ibes',
-            'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Detail History/Detail File WIth Actuals/Detail File With Actuals 197001-202108.csv.gz',
-            'rename': {'ACTDATS': 'date'},
-            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
-                           'FPEDATS': ['timestamp', '%Y%m%d'],
-                           'REVDATS': ['timestamp', '%Y%m%d'],
-                           'ANNDATS': ['timestamp', '%Y%m%d'],
-                           'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
-                           'ACTDATS_ACT': ['timestamp', '%Y%m%d']},
-            'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
-                      {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
-                      {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
-                      {'name': 'ibes_ss_measure_idx', 'column': 'measure'},
-                      {'name': 'ibes_ss_fpi_idx', 'column': 'fpi'}]
-        },
-
+        # {
+        #     'rows_to_interpret': 5000,
+        #     'table': 'summary_price_target',
+        #     'schema': 'ibes',
+        #     'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Price Target/lyrvpqbb4tg2lbv0.csv',
+        #     'rename': {'STATPERS': 'date'},
+        #     'alter_type': {'DATE': ['timestamp', '%Y%m%d']},
+        #     'index': [{'name': 'ibes_spt_date_idx', 'column': 'date'},
+        #               {'name': 'ibes_spt_ticker_idx', 'column': 'ticker'},
+        #               {'name': 'ibes_spt_usfirm_idx', 'column': 'usfirm'},
+        #               {'name': 'ibes_spt_curr_idx', 'column': 'curr'}]
+        # },
+        # {
+        #     'rows_to_interpret': 50000,
+        #     'table': 'summary_statistics',
+        #     'schema': 'ibes',
+        #     'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Summary History/Summary Statistics/1fhrqwpqzncqbdp3.csv',
+        #     'rename': {'STATPERS': 'date'},
+        #     'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+        #                    'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
+        #                    'FPEDATS': ['timestamp', '%Y%m%d']},
+        #     'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
+        #               {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
+        #               {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
+        #               {'name': 'ibes_ss_currcode_idx', 'column': 'curcode'},
+        #               {'name': 'ibes_ss_measure_idx', 'column': 'measure'}]
+        # },
+        # {
+        #     'rows_to_interpret': 50000,
+        #     'table': 'detail',
+        #     'schema': 'ibes',
+        #     'file_path': '/Users/alex/Desktop/WRDS/IBES/IBES Academic/Detail History/Detail File WIth Actuals/Detail File With Actuals 197001-202108.csv.gz',
+        #     'rename': {'ACTDATS': 'date'},
+        #     'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+        #                    'FPEDATS': ['timestamp', '%Y%m%d'],
+        #                    'REVDATS': ['timestamp', '%Y%m%d'],
+        #                    'ANNDATS': ['timestamp', '%Y%m%d'],
+        #                    'ANNDATS_ACT': ['timestamp', '%Y%m%d'],
+        #                    'ACTDATS_ACT': ['timestamp', '%Y%m%d']},
+        #     'index': [{'name': 'ibes_ss_date_idx', 'column': 'date'},
+        #               {'name': 'ibes_ss_ticker_idx', 'column': 'ticker'},
+        #               {'name': 'ibes_ss_usfirm_idx', 'column': 'usfirm'},
+        #               {'name': 'ibes_ss_measure_idx', 'column': 'measure'},
+        #               {'name': 'ibes_ss_fpi_idx', 'column': 'fpi'}]
+        # },
         #
-        # Audit Analytics
-        #
-        {
-            'rows_to_interpret': 500000,
-            'table': 'audit_opinions',
-            'schema': 'aa',
-            'file_path': '/Users/alex/Desktop/WRDS/Audit Analytics/Audit Opinions/lbsyljuigehonvhr.csv',
-            'rename': {'FILE_ACCEPTED': 'date',
-                       'COMPANY_FKEY': 'cik'},
-            'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
-                           # 'FISCAL_YEAR_ENDED_OF_OPINION': ['timestamp', '%Y%m%d']
-                           },
-            'index': [{'name': 'aa_ss_date_idx', 'column': 'date'},
-                      {'COMPANY_FKEY': 'aa_ss_ticker_idx', 'column': 'cik'}]
-        }
+        # #
+        # # Audit Analytics
+        # #
+        # {
+        #     'rows_to_interpret': 500000,
+        #     'table': 'audit_opinions',
+        #     'schema': 'aa',
+        #     'file_path': '/Users/alex/Desktop/WRDS/Audit Analytics/Audit Opinions/lbsyljuigehonvhr.csv',
+        #     'rename': {'FILE_ACCEPTED': 'date',
+        #                'COMPANY_FKEY': 'cik'},
+        #     'alter_type': {'DATE': ['timestamp', '%Y%m%d'],
+        #                    # 'FISCAL_YEAR_ENDED_OF_OPINION': ['timestamp', '%Y%m%d']
+        #                    },
+        #     'index': [{'name': 'aa_ss_date_idx', 'column': 'date'},
+        #               {'COMPANY_FKEY': 'aa_ss_ticker_idx', 'column': 'cik'}]
+        # }
     ]
 
     # building the tables, chunking the tables to insert bc if we dont then them tmep will balloon in size
     for inner_tbl_list in [tbls[i:i + 3] for i in range(0, len(tbls), 3)]:
-        IngestDataBase().ingest(inner_tbl_list, drop, rows_to_interpret=2000)
+        IngestDataBase().ingest(inner_tbl_list, drop, rows_to_interpret=20000)
+
+    # clearing the etf universe cache
+    clear_etf_universes()
+    # clearing the built universes
+    clear_built_universes()
 
     # building crsp universes
-    crsp_us_universe(max_rank=500, rebuild_mc_ranking=True)
-    crsp_us_universe(max_rank=1000)
-    crsp_us_universe(max_rank=3000)
-    crsp_us_universe(min_rank=1000, max_rank=3000)
+    crsp_us_universe(max_rank=500, rebuild_mc_ranking=True, link=True)
+    crsp_us_universe(max_rank=1000, link=True)
+    crsp_us_universe(max_rank=3000, link=True)
+    crsp_us_universe(min_rank=1000, max_rank=3000, link=True)
 
     # building compustat universes
     compustat_us_universe(max_rank=500, rebuild_mc_ranking=True)
@@ -288,5 +340,9 @@ def rebuild_db(drop: bool = False):
     compustat_us_universe(max_rank=3000)
     compustat_us_universe(min_rank=1000, max_rank=3000)
 
-    # clearing the etf universe cache
-    clear_cache()
+    # drop sql universe schema
+    clear_master_ranking_table()
+
+
+if __name__ == '__main__':
+    rebuild_db()

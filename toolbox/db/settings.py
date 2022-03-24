@@ -3,7 +3,10 @@ Define Global Settings
 """
 
 DB_CONNECTION_STRING = '/Users/alex/Desktop/DB/wrds.duckdb'  # the directory to the sql database
-CACHE_DIRECTORY = '/tmp'  # the directory to cache files
+CACHE_DIRECTORY = '/tmp'  # the directory to cache files, QueryConstructor gets cached here
+ETF_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/etf'  # the directory to save ETF Universes
+BUILT_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/built'  # directory to save custom-built universes
+
 
 DB_ADJUSTOR_FIELDS = {
     'cstat.security_daily': [

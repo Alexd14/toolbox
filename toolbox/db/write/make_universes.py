@@ -3,10 +3,9 @@ import logging
 import pandas as pd
 
 from toolbox.db.api.sql_connection import SQLConnection
+from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO, BUILT_UNI_DIRECTORY
 
 # this allows compatibility with python 3.6
-from toolbox.db.settings import ADD_ALL_LINKS_TO_PERMNO
-
 try:
     import pandas_market_calendars as mcal
 except ImportError as e:
@@ -16,7 +15,7 @@ logging.basicConfig(format='%(message)s ::: %(asctime)s', datefmt='%I:%M:%S %p',
 
 
 def compustat_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '2000',
-                          set_indexes: bool = True, rebuild_mc_ranking: bool = False) -> None:
+                          rebuild_mc_ranking: bool = False) -> None:
     """
     generates US daily indexes for compustat daily security file
     only will use the primary share for a company
@@ -28,7 +27,8 @@ def compustat_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '2
     :return: None
     """
 
-    table_name = f'universe.CSTAT_US{"" if min_rank == 1 else "_" + str(min_rank)}_{max_rank}'
+    table_name = f'CSTAT_US{"" if min_rank == 1 else "_" + str(min_rank)}_{max_rank}'
+    write_path = f'{BUILT_UNI_DIRECTORY}/{table_name}.parquet'
 
     if rebuild_mc_ranking:
         _make_cstat_us_universe_base_table()
@@ -36,34 +36,29 @@ def compustat_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '2
         logging.info(f'Using Prior Build of universe.cstat_mc_rank')
 
     logging.info(f'Creating table {table_name}')
-    sql_ensure_table_open = f'DROP TABLE IF EXISTS {table_name};'
 
     sql_make_universe_table = f""" 
-        CREATE TABLE {table_name} 
-        AS
+        COPY 
             (
             SELECT date, gvkey, iid, id, ttm_min_prccd, ttm_mc, ttm_mc_rank
-            FROM universe.cstat_mc_rank
+            FROM universe.temp_rank_cstat_mc
             WHERE ttm_mc_rank >= {min_rank} AND 
                 ttm_mc_rank <= {max_rank} AND 
                 date > '{start_date}'
             )
+        TO '{BUILT_UNI_DIRECTORY}/{table_name}.parquet' (FORMAT 'parquet')
         """
     # making the db connection
     con = SQLConnection(read_only=False).con
 
-    con.execute(sql_ensure_table_open)
     con.execute(sql_make_universe_table)
-    if set_indexes:
-        con.execute(f'CREATE INDEX {table_name.replace("universe.", "")}_date_idx ON {table_name} ("date")')
-        con.execute(f'CREATE INDEX {table_name.replace("universe.", "")}_gvkey_idx ON {table_name} ("id")')
     con.close()
 
-    logging.info(f'Finished Creating {table_name}')
+    logging.info(f'Wrote Table {table_name} To {write_path}')
 
 
 def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
-                     set_indexes=True, rebuild_mc_ranking: bool = False, link: bool = True) -> None:
+                     rebuild_mc_ranking: bool = False, link: bool = True) -> None:
     """
     Generates a universe of the top N stocks domiciled in the US by market cap
     Will only use companies primary share
@@ -79,7 +74,8 @@ def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
     trading_cal = mcal.get_calendar(
         'NYSE').valid_days(start_date=start_date, end_date=pd.to_datetime('today')).to_series().to_frame('trading_days')
 
-    table_name = f'universe.CRSP_US{"" if min_rank == 1 else "_" + str(min_rank)}_{max_rank}'
+    table_name = f'CRSP_US{"" if min_rank == 1 else "_" + str(min_rank)}_{max_rank}'
+    write_path = f'{BUILT_UNI_DIRECTORY}/{table_name}.parquet'
 
     if rebuild_mc_ranking:
         _make_crsp_us_universe_base_table()
@@ -88,11 +84,10 @@ def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
 
     logging.info(f'Creating table {table_name}')
 
-    sql_ensure_table_open = f'DROP TABLE IF EXISTS {table_name};'
     sql_make_universe_table = f""" 
         (
         SELECT date, permno, permco, ttm_min_prc, ttm_mc, ttm_mc_rank
-        FROM universe.crsp_mc_rank 
+        FROM universe.temp_rank_crsp_mc 
         WHERE ttm_mc_rank >= {min_rank} AND 
             ttm_mc_rank <= {max_rank} AND 
             date > '{start_date}'
@@ -107,25 +102,23 @@ def crsp_us_universe(max_rank: int, min_rank: int = 1, start_date: str = '1980',
                                          .replace('--columns', columns)
                                          .replace('--from', sql_make_universe_table)) + ')'
 
-    sql_make_universe_table = f"""CREATE TABLE {table_name} AS """ + sql_make_universe_table
+    sql_make_universe_table = f"""COPY 
+                                    {sql_make_universe_table} 
+                                    TO '{write_path}' (FORMAT 'parquet')"""
 
     # making the db connection
     con = SQLConnection(read_only=False).con
-    con.execute(sql_ensure_table_open)
     con.execute(sql_make_universe_table)
-    if set_indexes:
-        con.execute(f'CREATE INDEX {table_name.replace("universe.", "")}_date_idx ON {table_name} ("date")')
-        con.execute(f'CREATE INDEX {table_name.replace("universe.", "")}_permno_idx ON {table_name} ("permno")')
     con.close()
 
-    logging.info(f'Finished Creating {table_name}')
+    logging.info(f'Wrote Table {table_name} To {write_path}')
 
 
 def _make_cstat_us_universe_base_table():
     """
     Makes the base table with market cap ranks for each asset. Should be deleted after its done being used
     """
-    table_name = 'universe.cstat_mc_rank'
+    table_name = 'universe.temp_rank_cstat_mc'
     logging.info(f'Creating Ranking Table {table_name}')
 
     # getting the trading calendar so we dont have bad dates
@@ -184,7 +177,7 @@ def _make_crsp_us_universe_base_table():
     """
     Makes the base table with market cap ranks for each asset. Should be deleted after its done being used
     """
-    table_name = 'universe.crsp_mc_rank'
+    table_name = 'universe.temp_rank_crsp_mc'
     logging.info(f'Creating Ranking Table {table_name}')
 
     trading_cal = mcal.get_calendar(
@@ -192,6 +185,7 @@ def _make_crsp_us_universe_base_table():
 
     sql_ensure_schema_open = f'CREATE SCHEMA IF NOT EXISTS universe;'
     sql_ensure_table_open = f'DROP TABLE IF EXISTS {table_name};'
+
     sql_make_rank_universe_table = f""" 
         CREATE TABLE {table_name}
         AS
@@ -240,8 +234,30 @@ def _make_crsp_us_universe_base_table():
     logging.info(f'Finished Ranking Table {table_name}')
 
 
+def clear_master_ranking_table():
+    """
+    Wipes the ranking tables made by _make_crsp_us_universe_base_table and _make_cstat_us_universe_base_table
+    """
+    logging.info('Deleting Ranking Tables')
+
+    con = SQLConnection(read_only=False)
+    con.execute("DROP SCHEMA universe CASCADE;")
+    con.close()
+
+    logging.info('Finished Deleting Ranking Tables')
+
+
 if __name__ == '__main__':
-    crsp_us_universe(max_rank=500, rebuild_mc_ranking=False)
-    crsp_us_universe(max_rank=1000)
-    crsp_us_universe(max_rank=3000)
-    crsp_us_universe(min_rank=1000, max_rank=3000)
+    # crsp_us_universe(max_rank=500, rebuild_mc_ranking=True, link=True)
+    # crsp_us_universe(max_rank=1000, link=True)
+    # crsp_us_universe(max_rank=3000, link=True)
+    # crsp_us_universe(min_rank=1000, max_rank=3000, link=True)
+    #
+    # # building compustat universes
+    # compustat_us_universe(max_rank=500, rebuild_mc_ranking=True)
+    # compustat_us_universe(max_rank=1000)
+    # compustat_us_universe(max_rank=3000)
+    # compustat_us_universe(min_rank=1000, max_rank=3000)
+
+    # clear_master_ranking_table()
+    pass

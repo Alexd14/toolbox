@@ -10,13 +10,16 @@ class SQLConnection:
     Provides a lazy connection to a duckdb database
     """
 
-    def __init__(self, connection_string: Optional[str] = None, read_only: bool = True) -> None:
+    def __init__(self, connection_string: Optional[str] = None, read_only: bool = True, close_key=None) -> None:
         """
-        :param connection_string: the path to the duck db data base
+        if the connection is a memory connection then read_only will be False
+        :param connection_string: the path to the duck db database
             If not passed then will look in settings.py for the string
+        :param close_key: the key to be passed in order to close the connection in self.close_with_key()
         :return: None
         """
-        self._read_only: bool = read_only
+        self._read_only: bool = False if connection_string == ':memory:' else read_only
+        self._close_key = close_key
 
         self._connection_string: str = self._get_connection_string(connection_string)
         self._db_connection: Optional[duckdb.DuckDBPyConnection] = None
@@ -81,11 +84,18 @@ class SQLConnection:
 
     def close(self) -> None:
         """
-        will close the sql connection
+        will close the sql connection regardless of self.close_key
         """
         if self._db_connection:
             self._db_connection.close()
             self._db_connection = None
+
+    def close_with_key(self, close_key: str):
+        """
+        will close the sql connection if the passed close_key equals self.close_key
+        """
+        if close_key == self._close_key and close_key is not None:
+            self.close()
 
     def execute(self, sql: str, **kwargs) -> duckdb.DuckDBPyConnection:
         """
