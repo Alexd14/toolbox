@@ -282,11 +282,10 @@ class QueryConstructor:
         self._df_options['freq'] = freq
         return self
 
-    def set_calendar(self, calendar: str = 'NYSE', keep_old: bool = False):
+    def set_calendar(self, calendar: str = 'NYSE'):
         """
         sets the trading calendar to filter the dates by
         :param calendar: trading calendar we are resampling to, if 'full' then will use a 365 calendar
-        :param keep_old: should we keep the old NULL columns?
         """
         # getting the first and last date of data in the query
         start_date, end_date = self._get_start_end_date()
@@ -294,18 +293,19 @@ class QueryConstructor:
         asset_id = self._query_metadata['asset_id']
 
         if calendar.lower() != 'full':
+            temp_name = f'trading_cal_{calendar}_{start_date}_{end_date}'
             # geting the trading calander
             trading_cal = mcal.get_calendar(
                 calendar).valid_days(start_date=start_date, end_date=end_date).to_series().to_frame('date')
             full_date_id_sql = f"""(
                                     SELECT {asset_id}, date
                                     FROM {self._asset_table} as assets
-                                    CROSS JOIN trading_cal_{calendar}
+                                    CROSS JOIN {temp_name}
                                     ) as cal
                                 """
 
             # registering the trading calander
-            self._dict_asset_tables[f'trading_cal_{calendar}'] = trading_cal
+            self._dict_asset_tables[temp_name] = trading_cal
             # self._con.con.register('trading_cal', trading_cal)
         else:
             make_full_date = lambda x: pd.Timestamp(x).strftime('%Y-%m-%d')
@@ -349,7 +349,7 @@ class QueryConstructor:
         # Join ontot 365 calander
         # forward fill the data
         # if calendar then reindex for the calander
-        self.set_calendar('full', keep_old=True)
+        self.set_calendar('full')
         self._forward_fill(fill_limit)
         self.set_calendar(calendar)
 
