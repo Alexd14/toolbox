@@ -20,25 +20,6 @@ def calculate_ic(y_true: np.array, y_pred: np.array) -> float:
     return np.corrcoef(y_true, y_pred)[0][1]
 
 
-def _duck_db_edits(df, sql):
-    index_cols = None
-    if not isinstance(df.index, pd.RangeIndex):
-        index_cols = df.index.names
-        df = df.reset_index()
-
-    convert_to_period = []
-    for col in df.columns:
-        if isinstance(df[col].dtype, pd.PeriodDtype):
-            df[col] = df[col].dt.to_timestamp()
-            convert_to_period.append(col)
-
-    df = duckdb.query(sql).df()
-    for col in convert_to_period:
-        df[col] = df[col].dt.to_period('D')
-    df = df.set_index(index_cols) if index_cols else df
-    return df
-
-
 def factorize(df: pd.DataFrame, partition_by: List[str], exclude: List[str]):
     """
     Factorizes each column of the given dataframe except for the partition_by columns and the exclude columns
@@ -92,3 +73,22 @@ def _rank(df: pd.DataFrame, partition_by: List[str], exclude: List[str], rank_ty
                         ORDER BY {', '.join(partition_by)}
                         """
     return sql
+
+
+def _duck_db_edits(df, sql):
+    index_cols = None
+    if not isinstance(df.index, pd.RangeIndex):
+        index_cols = df.index.names
+        df = df.reset_index()
+
+    convert_to_period = []
+    for col in df.columns:
+        if isinstance(df[col].dtype, pd.PeriodDtype):
+            df[col] = df[col].dt.to_timestamp()
+            convert_to_period.append(col)
+
+    df = duckdb.query(sql).df()
+    for col in convert_to_period:
+        df[col] = df[col].dt.to_period('D')
+    df = df.set_index(index_cols) if index_cols else df
+    return df
