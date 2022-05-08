@@ -148,7 +148,7 @@ def _make_cstat_us_universe_base_table():
                             SELECT date, gvkey, iid, id, priusa, fic, tpci, curcdd,
                                 lag(prccd, 1, NULL) OVER lagDays AS prccd, 
                                 lag(cshoc, 1, NULL) OVER lagDays AS cshoc
-                            FROM cstat.security_daily AS sd RIGHT JOIN trading_cal cal ON sd.date = cal.trading_days 
+                            FROM cstat.sd AS sd RIGHT JOIN trading_cal cal ON sd.date = cal.trading_days 
                             WINDOW lagDays AS (PARTITION BY id ORDER BY date) 
                             )
                         WHERE fic = 'USA' AND
@@ -209,7 +209,7 @@ def _make_crsp_us_universe_base_table():
                         FROM
                             (
                             SELECT distinct date, permno, permco, shrcd, prc, shrout
-                            FROM crsp.security_daily as sd RIGHT JOIN trading_cal cal on sd.date = cal.trading_days
+                            FROM crsp.sd as sd RIGHT JOIN trading_cal cal on sd.date = cal.trading_days
                             )  
                         WINDOW lagDays AS (
                             PARTITION BY permno
