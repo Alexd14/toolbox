@@ -130,37 +130,3 @@ def _duck_db_edits(df, sql):
         df[col] = df[col].dt.to_period('D')
     df = df.set_index(index_cols) if index_cols else df
     return df
-
-
-def ntile(factor: pd.Series, ntiles: int, ) -> pd.Series:
-    """
-    Universe relative Quantiles of a factor by day
-    Around 100X faster than pandas groupby qcut
-
-    pd.DataFrame of ntiled factor
-        index: (pd.Period, _asset_id)
-        Columns: (factor, ntile)
-        Values: (factor value, Ntile corresponding to factor value)
-
-    :param factor: same var as ntile_return_tearsheet
-    :param ntiles: same var as ntile_return_tearsheet
-    """
-    factor = factor.to_frame('factor').reset_index()
-    index_names = factor.columns.tolist()
-    index_names.remove('factor')
-
-    date_is_period = isinstance(factor.date.dtype, pd.core.dtypes.dtypes.PeriodDtype)
-    if date_is_period:
-        factor['date'] = factor['date'].dt.to_timestamp()
-
-    sql_quantile = f"""SELECT *, NTILE({ntiles}) OVER(PARTITION BY date ORDER BY factor.factor DESC) as ntile
-                            FROM factor
-                            WHERE factor.factor IS NOT NULL"""
-    con = duckdb.connect(':memory:')
-    factor_ntile = con.execute(sql_quantile).df()
-
-    if date_is_period:
-        factor_ntile['date'] = factor_ntile['date'].dt.to_period(freq='D')
-
-    factor_ntile = factor_ntile.set_index(index_names)
-    return factor_ntile
