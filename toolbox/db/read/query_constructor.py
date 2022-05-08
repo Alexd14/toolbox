@@ -145,7 +145,7 @@ class QueryConstructor:
             elif isinstance(tbl, pd.DataFrame):
                 self._con.con.register(name, tbl)
             else:
-                raise ValueError('Unknown type to regester asset table')
+                raise ValueError('Unknown type to register asset table')
 
     def query_timeseries_table(self, table: str, fields: List[str], assets: Union[Iterable[any], str],
                                search_by: str, start_date: str, end_date: str = '3000', adjust: bool = True):
@@ -293,7 +293,7 @@ class QueryConstructor:
         asset_id = self._query_metadata['asset_id']
 
         if calendar.lower() != 'full':
-            temp_name = f'trading_cal_{calendar}_{start_date}_{end_date}'
+            temp_name = f'trading_cal_{calendar}_{hashlib.sha224(str(start_date + end_date).encode()).hexdigest()}'
             # geting the trading calander
             trading_cal = mcal.get_calendar(
                 calendar).valid_days(start_date=start_date, end_date=end_date).to_series().to_frame('date')
@@ -611,6 +611,11 @@ class QueryConstructor:
         self.join(other=cstat_table, on=on, tbl_name=tbl_name, join_type=join_type, nest=nest)
 
         return self
+
+    def to_temp(self, temp_name: str):
+        """
+        write the query to a temp table
+        """
 
     def _clear_query_string(self, keep: Iterable[str]) -> None:
         """

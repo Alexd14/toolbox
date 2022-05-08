@@ -67,6 +67,12 @@ class SQLConnection:
         """
         return self.read_only
 
+    def connection_string(self) -> str:
+        """
+        returns the connection string
+        """
+        return self._connection_string
+
     def set_read_only(self, read_only: bool) -> None:
         """
         setter for read only
@@ -111,3 +117,21 @@ class SQLConnection:
         :return: None
         """
         self.con.execute(f'PRAGMA threads={num_threads};')
+
+    def return_other_if_open(self, other, connection_string=None, read_only=None, close_key=None):
+        """
+        returns other if the other is not None and matches all conditions else returns self
+        if a condition arg is none then will not check that condition
+        can remove the current connection from scope the program if other is not None
+        """
+        if other is None:
+            return self
+        if connection_string and other.connection_string != connection_string:
+            return self
+        if read_only and other.read_only != read_only:
+            return self
+        if close_key and other.close_key != close_key:
+            return self
+        return other
+
+

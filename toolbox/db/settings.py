@@ -7,16 +7,20 @@ CACHE_DIRECTORY = '/tmp'  # the directory to cache files, QueryConstructor gets 
 ETF_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/etf'  # the directory to save ETF Universes
 BUILT_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/built'  # directory to save custom-built universes
 
-
 DB_ADJUSTOR_FIELDS = {
-    'cstat.security_daily': [
+    'cstat.sd': [
         {
             'adjustor': 'ajexdi',
             'fields_to_adjust': ['prccd', 'prcod', 'prchd', 'prcld', 'eps'],
             'operation': '/'
+        },
+        {
+            'adjustor': 'ajexdi',
+            'fields_to_adjust': ['cshoc', 'cshtrd'],
+            'operation': '*'
         }
     ],
-    'crsp.security_daily': [
+    'crsp.sd': [
         {
             'adjustor': 'cfacpr',
             'fields_to_adjust': ['prc', 'openprc', 'askhi', 'bidlo', 'bid', 'ask'],
@@ -41,6 +45,9 @@ DB_ADJUSTOR_FIELDS = {
         {'fields_to_adjust': []}
     ]
 }
+
+DB_ADJUSTOR_FIELDS['sd'] = DB_ADJUSTOR_FIELDS['cstat.sd']
+DB_ADJUSTOR_FIELDS['main.sd'] = DB_ADJUSTOR_FIELDS['cstat.sd']
 
 # sql code to link permno to cstat and ibes
 ADD_ALL_LINKS_TO_PERMNO = """
