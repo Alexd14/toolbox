@@ -4,7 +4,7 @@ Define Global Settings
 
 DB_CONNECTION_STRING = '/Users/alex/Desktop/DB/wrds.duckdb'  # the directory to the sql database
 CACHE_DIRECTORY = '/tmp'  # the directory to cache files, QueryConstructor gets cached here
-ETF_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/etf'  # the directory to save ETF Universes
+ETF_UNI_DIRECTORY = '/tmp'  # '/Users/alex/Desktop/DB/universes/etf'  # the directory to save ETF Universes
 BUILT_UNI_DIRECTORY = '/Users/alex/Desktop/DB/universes/built'  # directory to save custom-built universes
 
 DB_ADJUSTOR_FIELDS = {
@@ -34,7 +34,33 @@ DB_ADJUSTOR_FIELDS = {
         }
 
     ],
-    'cstat.fundamental_annual': [
+    'crsp.sm': [
+        {
+            'adjustor': 'cfacpr',
+            'fields_to_adjust': ['prc', 'openprc', 'askhi', 'bidlo', 'bid', 'ask', 'altprc'],
+            'operation': '/',
+            'function': 'ABS'
+        },
+        {
+            'adjustor': 'cfacshr',
+            'fields_to_adjust': ['vol', 'shrout'],
+            'operation': '*'
+        }
+
+    ],
+    'cstat.sm': [
+        {
+            'adjustor': 'ajexm',
+            'fields_to_adjust': ['prccm', 'prchm', 'prclm'],
+            'operation': '/'
+        },
+        {
+            'adjustor': 'ajexm',
+            'fields_to_adjust': ['cshom', 'cshtrm'],
+            'operation': '*'
+        }
+    ],
+    'cstat.funda': [
         {'fields_to_adjust': []}
     ],
 

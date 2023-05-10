@@ -4,14 +4,14 @@ from setuptools import find_packages
 
 setup(
     name='factor-toolbox',
-    version='1.1.6',
+    version='1.1.7',
     packages=find_packages(),
     license='MIT',
     description='A simple toolbox to aid in the exploration of potential alpha sources.',
     author='',
     author_email='',
     url='https://github.com/Alexd14/factor-toolbox',
-    download_url='https://github.com/Alexd14/toolbox/archive/refs/tags/v1.1.6.tar.gz',
+    download_url='https://github.com/Alexd14/toolbox/archive/refs/tags/v1.1.7.tar.gz',
     keywords=['factor', 'equity factor'],
     install_requires=[
         'pandas',

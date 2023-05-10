@@ -84,7 +84,7 @@ class QueryConstructor:
             self._query_metadata['asset_id']] if self._query_metadata['asset_id'] else []
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         """
         executes the sql query that the user has created
         """

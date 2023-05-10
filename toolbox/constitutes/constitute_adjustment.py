@@ -20,7 +20,8 @@ class ConstituteAdjustment:
     on given constitute data
     """
 
-    def __init__(self, id_col: str = 'symbol', date_type: str = 'timestamp'):
+    def __init__(self, id_col: str = 'symbol', date_type: str = 'timestamp', freq: str = 'D',
+                 bring_dates_to_end_of_period: bool = None):
         """
         constructor for ConstituteAdjustment
         :param id_col: the asset identifier column for the data that will be passed
@@ -35,6 +36,12 @@ class ConstituteAdjustment:
         if date_type not in ['period', 'timestamp']:
             raise ValueError(f'{date_type} is not recognised')
         self.__date_type = date_type
+
+        if freq == 'D' and bring_dates_to_end_of_period:
+            raise ValueError("Cannot have a freq of 'D' and bring_dates_to_end_of_period as True")
+
+        self.__freq = freq
+        self.__normalize_dates = bring_dates_to_end_of_period
 
         self.__index_constitutes_factor: Optional[pd.MultiIndex] = None
         self.__index_constitutes_pricing: Optional[pd.MultiIndex] = None
@@ -62,13 +69,14 @@ class ConstituteAdjustment:
         :param start_date: The first date we want to get data for, needs to have tz of UTC
         :param end_date: The last first date we want to get data for, needs to have tz of UTC
         :param date_format: if fromCol AND thruCol are both strings then the format to parse them in to dates
+        :param freq: the frequency we should downsamle to. Will downsample to the latest market date
         :return: None
         """
         # making sure date and self.__id_col are in the columns
         index_constitutes = _check_columns([self.__id_col, 'from', 'thru'], index_constitutes)
 
         # will throw an error if there are duplicate self.__id_col
-        handle_duplicates(df=index_constitutes, out_type='ValueError', name='The column symbols',
+        handle_duplicates(df=index_constitutes, out_type='ValueError', name=f'The column {self.__id_col}',
                           drop=False, subset=[self.__id_col])
 
         # seeing if we have to convert from and thru to series of timestamps
@@ -78,7 +86,13 @@ class ConstituteAdjustment:
             index_constitutes['thru'] = pd.to_datetime(index_constitutes['thru'], format=date_format) \
                 .dt.tz_localize('UTC')
 
-        relevant_cal = mcal.get_calendar('NYSE').valid_days(start_date=start_date, end_date=end_date).to_series()
+        if not self.__normalize_dates:
+            relevant_cal = mcal.get_calendar('NYSE').valid_days(start_date=start_date, end_date=end_date).to_series()
+            if self.__freq != 'D':
+                relevant_cal = relevant_cal.groupby(pd.Grouper(freq=self.__freq)).max().to_frame().set_index(
+                    0).index.to_series()
+        else:
+            relevant_cal = pd.date_range(start_date, end_date, freq=self.__freq, tz='UTC').to_series()
 
         # making a list of series to eventually concat
         indexes_factor: List[pd.Series] = []
@@ -120,15 +134,39 @@ class ConstituteAdjustment:
 
         raw_uni = (QueryConstructor(sql_con=sql_con, cache=False, freq=None)
                    .query_universe_table(assets, fields=[self.__id_col], start_date=start_date,
-                                         end_date=end_date, index=['date', self.__id_col], override_sql_con=over_con)
+                                         end_date=end_date, override_sql_con=over_con)
+                   .order_by('date')
                    .df)
 
         sql_con.close_with_key(self.__class__.__name__)
+
+        if self.__freq != 'D':
+            wanted_dates = raw_uni['date'].groupby([raw_uni['date'].dt.to_period(freq=self.__freq)]).max().to_numpy()
+            raw_uni = raw_uni[raw_uni['date'].isin(wanted_dates)]
+        if self.__normalize_dates:
+            raw_uni['date'] = raw_uni['date'].dt.to_period(freq=self.__freq).dt.to_timestamp(how='E')
+
+        raw_uni = raw_uni.set_index(['date', self.__id_col])
 
         missing_id_for = raw_uni.index.to_frame()[self.__id_col].isnull().sum() / len(raw_uni)
         print(f"Universe missing \"{self.__id_col}\" for {round(missing_id_for * 100, 2)}% of data points")
 
         self.__index_constitutes_factor = raw_uni.index.dropna()
+
+    def add_index_info_long(self, index_constitutes: pd.DataFrame, start_date: Union[pd.Timestamp, str] = None,
+                            end_date: Union[pd.Timestamp, str] = None):
+        index_constitutes = index_constitutes.reset_index()[['date', self.__id_col]]
+        if self.__freq != 'D':
+            wanted_dates = index_constitutes['date'].groupby(
+                [index_constitutes['date'].dt.to_period(freq=self.__freq)]).max().to_numpy()
+            index_constitutes = index_constitutes[index_constitutes['date'].isin(wanted_dates)]
+        if self.__normalize_dates:
+            index_constitutes['date'] = index_constitutes['date'].dt.to_period(freq=self.__freq).dt.to_timestamp(how='E')
+
+        index_constitutes = index_constitutes[
+            (index_constitutes['date'] > start_date) & (index_constitutes['date'] < end_date)]
+
+        self.__index_constitutes_factor = index_constitutes.set_index(['date', self.__id_col]).index
 
     def adjust_data_for_membership(self, data: pd.DataFrame, contents: str = 'factor',
                                    date_format: str = '') -> pd.DataFrame:

@@ -148,7 +148,7 @@ def _make_cstat_us_universe_base_table():
                             SELECT date, gvkey, iid, id, priusa, fic, tpci, curcdd,
                                 lag(prccd, 1, NULL) OVER lagDays AS prccd, 
                                 lag(cshoc, 1, NULL) OVER lagDays AS cshoc
-                            FROM cstat.sd AS sd RIGHT JOIN trading_cal cal ON sd.date = cal.trading_days 
+                            FROM main.sd AS sd RIGHT JOIN trading_cal cal ON sd.date = cal.trading_days 
                             WINDOW lagDays AS (PARTITION BY id ORDER BY date) 
                             )
                         WHERE fic = 'USA' AND

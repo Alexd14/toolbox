@@ -84,7 +84,7 @@ def _rank(df: pd.DataFrame, partition_by: List[str], exclude: List[str], rank_ty
     return sql
 
 
-def ntile(df: pd.DataFrame, partition_by: List[str], exclude=None):
+def ntile(df: pd.DataFrame, ntiles:int, partition_by: List[str], exclude=None):
     """
     Ntiles each column of the given dataframe except for the partition_by columns and the exclude columns
     Will preserve indexes and period data types
@@ -93,19 +93,18 @@ def ntile(df: pd.DataFrame, partition_by: List[str], exclude=None):
     :param df: the dataframe we are factorizing
     :param partition_by: What to partition by for calculating rank will normally be date and sector
     :param exclude: columns to exclude in the ranking process
-    :param rank_type: the type of rank we are performing
     """
     if exclude is None:
         exclude = []
 
-    return _duck_db_edits(df, _ntile(df, partition_by, exclude))
+    return _duck_db_edits(df, _ntile(df, ntiles, partition_by, exclude))
 
 
-def _ntile(df, partition_by, exclude):
+def _ntile(df, ntiles, partition_by, exclude):
     select = partition_by + exclude
     for col in set(df.columns) - set(partition_by) - set(exclude):
         select.append(
-            f"SELECT *, NTILE({col}) OVER(PARTITION BY {', '.join(partition_by)} ORDER BY {col} DESC) as {col} ")
+            f" NTILE({ntiles}) OVER(PARTITION BY {', '.join(partition_by)} ORDER BY {col} DESC) as {col} ")
     sql = f"""SELECT {', '.join(select)}
                             FROM df
                             ORDER BY {', '.join(partition_by)}
